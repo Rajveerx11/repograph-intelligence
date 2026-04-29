@@ -7,9 +7,12 @@ import { promisify } from "node:util";
 import {
   analyzeChangedFiles,
   analyzeImpact,
+  analyzeRepositories,
   analyzeRepository,
   calculateMetrics,
   compressContext,
+  createAgentContext,
+  createGuidanceReport,
   loadGraph,
   saveGraph,
   semanticSearch,
@@ -48,6 +51,14 @@ try {
     await simulateCommand(args);
   } else if (command === "diff") {
     await diffCommand(args);
+  } else if (command === "guide") {
+    await guideCommand(args);
+  } else if (command === "agent-context") {
+    await agentContextCommand(args);
+  } else if (command === "workspace") {
+    await workspaceCommand(args);
+  } else if (command === "mcp") {
+    await import("../../mcp/src/server.js");
   } else {
     throw new Error(`Unknown command: ${command}`);
   }
@@ -232,6 +243,83 @@ async function diffCommand(args) {
   }
 }
 
+async function guideCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const changedFiles = options.changed ? options.changed.split(",").map((item) => item.trim()).filter(Boolean) : [];
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const guidance = createGuidanceReport(graph, { changedFiles });
+
+  if (options.json) {
+    console.log(JSON.stringify(guidance, null, 2));
+    return;
+  }
+
+  if (!guidance.warnings.length) {
+    console.log("No major structural warnings detected.");
+  } else {
+    for (const warning of guidance.warnings) {
+      const pathLabel = warning.path ? ` ${warning.path}` : "";
+      console.log(`${warning.severity.toUpperCase()} ${warning.code}${pathLabel}`);
+      console.log(`  ${warning.message}`);
+      if (warning.detail) {
+        console.log(`  ${warning.detail}`);
+      }
+    }
+  }
+  console.log("Recommendations:");
+  for (const recommendation of guidance.recommendations) {
+    console.log(`- ${recommendation}`);
+  }
+}
+
+async function agentContextCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const changedFiles = options.changed ? options.changed.split(",").map((item) => item.trim()).filter(Boolean) : [];
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const context = createAgentContext(graph, {
+    query: options.query,
+    changedFiles,
+    limit: Number(options.limit ?? 8)
+  });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(context, null, 2)}\n`, "utf8");
+    console.log(`Agent context: ${outputPath}`);
+    return;
+  }
+
+  console.log(JSON.stringify(context, null, 2));
+}
+
+async function workspaceCommand(args) {
+  const { positional, options } = parseTargetAndOptionsWithPositionals(args);
+  const repositories = positional.length ? positional : ["."];
+  const workspace = await analyzeRepositories(repositories);
+
+  if (options.json) {
+    console.log(JSON.stringify(workspace, null, 2));
+    return;
+  }
+
+  console.log(`Repositories: ${workspace.repositoryCount}`);
+  console.log(`Files: ${workspace.totals.files}`);
+  console.log(`Symbols: ${workspace.totals.symbols}`);
+  console.log(`Internal dependencies: ${workspace.totals.internalDependencies}`);
+  console.log(`External dependencies: ${workspace.totals.externalDependencies}`);
+  if (workspace.sharedExternalPackages.length) {
+    console.log("Shared external packages:");
+    for (const item of workspace.sharedExternalPackages) {
+      console.log(`- ${item.name}: ${item.repositories} repositories`);
+    }
+  }
+}
+
 function parseTargetAndOptions(args) {
   const options = {};
   const positional = [];
@@ -265,6 +353,16 @@ function parseTargetAndOptions(args) {
     }
     if (arg === "--head") {
       options.head = requireValue(args, index, "--head");
+      index += 1;
+      continue;
+    }
+    if (arg === "--query") {
+      options.query = requireValue(args, index, "--query");
+      index += 1;
+      continue;
+    }
+    if (arg === "--changed") {
+      options.changed = requireValue(args, index, "--changed");
       index += 1;
       continue;
     }
@@ -356,6 +454,16 @@ function parseTargetAndOptionsWithPositionals(args) {
       index += 1;
       continue;
     }
+    if (arg === "--query") {
+      options.query = requireValue(args, index, "--query");
+      index += 1;
+      continue;
+    }
+    if (arg === "--changed") {
+      options.changed = requireValue(args, index, "--changed");
+      index += 1;
+      continue;
+    }
     if (arg === "--json") {
       options.json = true;
       continue;
@@ -419,6 +527,10 @@ Usage:
   repograph risk [repo] [--limit n] [--json]
   repograph simulate [repo] <file...> [--depth n] [--json]
   repograph diff [repo] [--base ref] [--head ref] [--json]
+  repograph guide [repo] [--changed file,file] [--json]
+  repograph agent-context [repo] [--query text] [--changed file,file] [--out path]
+  repograph workspace <repo...> [--json]
+  repograph mcp
 
 Commands:
   analyze  Analyze a repository and save .repograph/graph.json
@@ -431,5 +543,9 @@ Commands:
   risk     Rank files by dependency risk
   simulate Simulate structural effects of a change set
   diff     Analyze changed files from a Git diff
+  guide    Print structural guidance warnings
+  agent-context Generate AI-ready structured repository context
+  workspace Analyze multiple repositories together
+  mcp      Start the RepoGraph MCP stdio server
 `);
 }

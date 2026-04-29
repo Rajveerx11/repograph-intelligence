@@ -4,9 +4,12 @@ import test from "node:test";
 import {
   analyzeImpact,
   analyzePullRequest,
+  analyzeRepositories,
   analyzeRepository,
   calculateMetrics,
   compressContext,
+  createAgentContext,
+  createGuidanceReport,
   semanticSearch,
   simulateRefactor,
   scoreDependencyRisk,
@@ -87,4 +90,34 @@ test("simulates refactors and pull request impact", async () => {
   assert.ok(simulation.recommendations.length > 0);
   assert.match(pullRequest.summary, /Blast radius: 1/);
   assert.equal(pullRequest.risk.level, "low");
+});
+
+test("creates AI agent context with search, impact, and guidance", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const context = createAgentContext(graph, {
+    query: "greeting flow",
+    changedFiles: ["src/util.ts"]
+  });
+
+  assert.equal(context.version, 1);
+  assert.equal(context.impact.blastRadius, 1);
+  assert.ok(context.semanticMatches.some((match) => match.path === "src/index.ts"));
+  assert.ok(context.guidance.recommendations.length > 0);
+  assert.match(context.compressedContext, /RepoGraph Context/);
+});
+
+test("generates structural guidance warnings", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const guidance = createGuidanceReport(graph, { changedFiles: ["src/util.ts"] });
+
+  assert.ok(Array.isArray(guidance.warnings));
+  assert.ok(guidance.recommendations.length > 0);
+});
+
+test("summarizes multiple repositories as a workspace", async () => {
+  const workspace = await analyzeRepositories([fixturePath, fixturePath]);
+
+  assert.equal(workspace.repositoryCount, 2);
+  assert.equal(workspace.totals.files, 8);
+  assert.ok(workspace.sharedExternalPackages.some((item) => item.name === "express"));
 });

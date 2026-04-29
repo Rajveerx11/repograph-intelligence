@@ -2,7 +2,7 @@
 
 RepoGraph Intelligence is an AI-native structural intelligence engine for software repositories.
 
-It analyzes a codebase as a dependency graph, enriches that graph with semantic signals, and exposes repository intelligence through a CLI that can answer questions about structure, search, architecture, and change impact.
+It analyzes a codebase as a dependency graph, enriches that graph with semantic signals, and exposes repository intelligence through a CLI and MCP server that can answer questions about structure, search, architecture, and change impact.
 
 The goal is not to be another autocomplete tool or chat wrapper. RepoGraph focuses on the missing layer underneath AI-assisted development: durable structural context about how a repository is connected and what a change is likely to affect.
 
@@ -25,6 +25,10 @@ The current implementation is a dependency-light Node.js baseline that validates
 - Scores dependency risk across the repository
 - Simulates refactor/change-set impact
 - Analyzes changed files from a Git diff
+- Produces structured AI agent context snapshots
+- Emits structural guidance warnings for risky files and boundaries
+- Runs as a local MCP stdio server for AI assistants
+- Summarizes multiple repositories as a workspace
 
 ## Phase Coverage
 
@@ -33,7 +37,7 @@ The current implementation is a dependency-light Node.js baseline that validates
 | Phase 1: Repository Structural Engine | In progress | Parser, graph generation, metrics, JSON persistence, CLI |
 | Phase 2: Semantic Intelligence Layer | In progress | Local semantic search, architecture summaries, context compression |
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
-| Phase 4: AI Agent and IDE Ecosystem | Planned | MCP server, IDE integrations, context APIs |
+| Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
 | Phase 5: Enterprise and Advanced Intelligence | Planned | History, ownership, security, recommendations |
 
 ## Quick Start
@@ -120,6 +124,30 @@ Analyze changed files from a Git diff:
 npm run repograph -- diff ./repo --base origin/main --head HEAD
 ```
 
+Print structural guidance warnings:
+
+```bash
+npm run repograph -- guide ./repo --changed src/auth/session.ts
+```
+
+Generate structured agent context as JSON:
+
+```bash
+npm run repograph -- agent-context ./repo --query "authentication flow" --changed src/auth/session.ts
+```
+
+Analyze multiple repositories together:
+
+```bash
+npm run repograph -- workspace ./service-a ./service-b --json
+```
+
+Start the MCP server:
+
+```bash
+npm run mcp
+```
+
 Every intelligence command supports JSON output where useful:
 
 ```bash
@@ -142,6 +170,30 @@ On top of that graph, RepoGraph derives intelligence:
 - Architecture inference groups files into modules, layers, and boundaries
 - Impact analysis walks reverse dependency paths to estimate downstream blast radius
 - Risk scoring ranks files by fan-in, fan-out, external dependencies, symbols, and cycles
+- Agent context packages summaries, search hits, impact, guidance, and compressed context for AI tools
+- Guidance warnings highlight high-risk graph nodes, cycles, boundary pressure, and large blast radius
+
+## AI and IDE Integration
+
+RepoGraph includes an MCP-compatible stdio server intended for local AI assistants, coding agents, and future IDE integrations.
+
+Start it with:
+
+```bash
+npm run mcp
+```
+
+The server exposes these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `repograph_analyze` | Return repository metrics, architecture, and package summary |
+| `repograph_search` | Search files by local semantic relevance |
+| `repograph_context` | Return AI-ready context with summaries, matches, guidance, and impact |
+| `repograph_impact` | Estimate blast radius for changed files |
+| `repograph_guidance` | Return structural warnings and recommendations |
+
+The MCP server is intentionally local-first. It analyzes source on demand and does not require cloud services or model provider credentials.
 
 ## Project Layout
 
@@ -149,8 +201,11 @@ On top of that graph, RepoGraph derives intelligence:
 packages/
   cli/
     src/index.js            CLI entrypoint
+  mcp/
+    src/server.js           MCP stdio server
   core/
     src/
+      agent.js              AI context and guidance APIs
       architecture.js       Architecture inference
       graph.js              Normalized graph builder
       impact.js             Phase 3 impact intelligence
@@ -160,6 +215,7 @@ packages/
       semantic.js           Local semantic index/search
       storage.js            Graph persistence
       summaries.js          Repository summaries and context compression
+      workspace.js          Multi-repository workspace summaries
 test/
   core.test.js              Core behavior tests
   fixtures/                 Small multi-language fixture repository
@@ -199,7 +255,7 @@ Near-term priorities:
 - Add richer symbol-level references and call edges
 - Add PR-oriented output formats for CI
 - Add visualization using React Flow
-- Add MCP server support for AI assistants and coding agents
+- Expand MCP tools for symbol-level references and saved graph resources
 
 Longer-term priorities:
 
@@ -208,7 +264,7 @@ Longer-term priorities:
 - Historical architecture drift analysis
 - Ownership and team intelligence
 - Security and dependency path risk analysis
-- Multi-repository intelligence
+- Deeper multi-repository service intelligence
 
 ## Design Principles
 
@@ -234,4 +290,3 @@ For larger changes, please include a short explanation of the repository behavio
 ## License
 
 MIT
-
