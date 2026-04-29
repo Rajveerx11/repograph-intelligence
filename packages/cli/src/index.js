@@ -8,12 +8,16 @@ import {
   analyzeChangedFiles,
   analyzeImpact,
   analyzeRepositories,
+  analyzeRepositoryHistory,
   analyzeRepository,
+  analyzeSecurityRisk,
   calculateMetrics,
   compressContext,
   createAgentContext,
   createGuidanceReport,
+  inferOwnership,
   loadGraph,
+  recommendArchitecture,
   saveGraph,
   semanticSearch,
   simulateRefactor,
@@ -57,6 +61,14 @@ try {
     await agentContextCommand(args);
   } else if (command === "workspace") {
     await workspaceCommand(args);
+  } else if (command === "history") {
+    await historyCommand(args);
+  } else if (command === "ownership") {
+    await ownershipCommand(args);
+  } else if (command === "security") {
+    await securityCommand(args);
+  } else if (command === "recommend") {
+    await recommendCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -320,6 +332,103 @@ async function workspaceCommand(args) {
   }
 }
 
+async function historyCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const history = await analyzeRepositoryHistory(target, { limit: Number(options.limit ?? 200) });
+
+  if (options.json) {
+    console.log(JSON.stringify(history, null, 2));
+    return;
+  }
+
+  if (!history.available) {
+    console.log(history.reason);
+    return;
+  }
+
+  console.log(`Commits analyzed: ${history.commitsAnalyzed}`);
+  console.log(`Contributors: ${history.contributors.map((item) => item.name).join(", ") || "none"}`);
+  console.log("Historical hotspots:");
+  for (const file of history.fileHotspots.slice(0, Number(options.limit ?? 10))) {
+    console.log(`- ${file.path}: ${file.churn} churn across ${file.commits} commit(s)`);
+  }
+  console.log("Drift signals:");
+  for (const signal of history.driftSignals) {
+    console.log(`- ${signal.severity.toUpperCase()} ${signal.message}`);
+  }
+}
+
+async function ownershipCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const history = await analyzeRepositoryHistory(target, { limit: Number(options.limit ?? 200) });
+  const ownership = inferOwnership(graph, history);
+
+  if (options.json) {
+    console.log(JSON.stringify(ownership, null, 2));
+    return;
+  }
+
+  console.log(`Ownership source: ${ownership.available ? "git history" : "repository structure only"}`);
+  console.log("Modules:");
+  for (const module of ownership.modules.slice(0, Number(options.limit ?? 10))) {
+    const owners = module.primaryOwners.map((owner) => `${owner.name} (${owner.files})`).join(", ") || "unassigned";
+    console.log(`- ${module.name}: ${module.ownershipCoverage} coverage, owners: ${owners}`);
+  }
+  console.log("Signals:");
+  for (const signal of ownership.signals) {
+    console.log(`- ${signal.severity.toUpperCase()} ${signal.message}`);
+  }
+}
+
+async function securityCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const security = analyzeSecurityRisk(graph, { limit: Number(options.limit ?? 10) });
+
+  if (options.json) {
+    console.log(JSON.stringify(security, null, 2));
+    return;
+  }
+
+  console.log(security.summary);
+  console.log("Findings:");
+  for (const finding of security.findings.slice(0, Number(options.limit ?? 10))) {
+    console.log(`- ${finding.severity.toUpperCase()} ${finding.type}: ${finding.target}`);
+    console.log(`  ${finding.message}`);
+  }
+  console.log("Critical blast zones:");
+  for (const zone of security.criticalBlastZones.slice(0, Number(options.limit ?? 10))) {
+    console.log(`- ${zone.path}: ${zone.risk}, blast radius ${zone.blastRadius}`);
+  }
+}
+
+async function recommendCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const recommendations = recommendArchitecture(graph, { limit: Number(options.limit ?? 20) });
+
+  if (options.json) {
+    console.log(JSON.stringify(recommendations, null, 2));
+    return;
+  }
+
+  console.log(recommendations.summary);
+  for (const item of recommendations.recommendations) {
+    console.log(`- ${item.priority.toUpperCase()} ${item.title}: ${item.target}`);
+    console.log(`  ${item.reason}`);
+    for (const action of item.actions) {
+      console.log(`  * ${action}`);
+    }
+  }
+}
+
 function parseTargetAndOptions(args) {
   const options = {};
   const positional = [];
@@ -530,6 +639,10 @@ Usage:
   repograph guide [repo] [--changed file,file] [--json]
   repograph agent-context [repo] [--query text] [--changed file,file] [--out path]
   repograph workspace <repo...> [--json]
+  repograph history [repo] [--limit n] [--json]
+  repograph ownership [repo] [--limit n] [--json]
+  repograph security [repo] [--limit n] [--json]
+  repograph recommend [repo] [--limit n] [--json]
   repograph mcp
 
 Commands:
@@ -546,6 +659,10 @@ Commands:
   guide    Print structural guidance warnings
   agent-context Generate AI-ready structured repository context
   workspace Analyze multiple repositories together
+  history  Analyze repository evolution from Git history
+  ownership Infer file and module ownership from Git history
+  security Identify security-sensitive architecture risk
+  recommend Generate architecture improvement recommendations
   mcp      Start the RepoGraph MCP stdio server
 `);
 }

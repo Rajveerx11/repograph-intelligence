@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import {
   analyzeImpact,
+  analyzeRepositoryHistory,
   analyzeRepository,
+  analyzeSecurityRisk,
   createAgentContext,
   createGuidanceReport,
+  inferOwnership,
+  recommendArchitecture,
   semanticSearch,
   summarizeRepository
 } from "../../core/src/index.js";
@@ -75,6 +79,54 @@ const tools = [
           type: "array",
           items: { type: "string" }
         }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_history",
+    description: "Analyze repository evolution and historical churn from Git history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        limit: { type: "number" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_ownership",
+    description: "Infer file and module ownership from Git history.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        limit: { type: "number" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_security",
+    description: "Identify security-sensitive architecture risk and critical blast zones.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        limit: { type: "number" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_recommend",
+    description: "Generate architecture improvement recommendations from graph intelligence.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        limit: { type: "number" }
       },
       required: ["repoPath"]
     }
@@ -190,6 +242,22 @@ async function callTool(name, args) {
     const graph = await analyzeRepository(args.repoPath);
     return createGuidanceReport(graph, { changedFiles: args.changedFiles ?? [] });
   }
+  if (name === "repograph_history") {
+    return analyzeRepositoryHistory(args.repoPath, { limit: args.limit ?? 200 });
+  }
+  if (name === "repograph_ownership") {
+    const graph = await analyzeRepository(args.repoPath);
+    const history = await analyzeRepositoryHistory(args.repoPath, { limit: args.limit ?? 200 });
+    return inferOwnership(graph, history);
+  }
+  if (name === "repograph_security") {
+    const graph = await analyzeRepository(args.repoPath);
+    return analyzeSecurityRisk(graph, { limit: args.limit ?? 10 });
+  }
+  if (name === "repograph_recommend") {
+    const graph = await analyzeRepository(args.repoPath);
+    return recommendArchitecture(graph, { limit: args.limit ?? 20 });
+  }
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -205,4 +273,3 @@ function writeMessage(message) {
   const body = JSON.stringify(message);
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
 }
-

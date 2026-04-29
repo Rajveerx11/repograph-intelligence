@@ -14,6 +14,10 @@ export {
   createContextApiResponse,
   createGuidanceReport
 } from "./agent.js";
+export { analyzeRepositoryHistory, summarizeEvolution } from "./history.js";
+export { inferOwnership } from "./ownership.js";
+export { recommendArchitecture } from "./recommendations.js";
+export { analyzeSecurityRisk } from "./security.js";
 export { analyzeRepositories, summarizeWorkspace } from "./workspace.js";
 export { buildSemanticIndex, semanticSearch } from "./semantic.js";
 export { compressContext, summarizeRepository } from "./summaries.js";

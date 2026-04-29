@@ -6,13 +6,17 @@ import {
   analyzePullRequest,
   analyzeRepositories,
   analyzeRepository,
+  analyzeSecurityRisk,
   calculateMetrics,
   compressContext,
   createAgentContext,
   createGuidanceReport,
+  inferOwnership,
+  recommendArchitecture,
   semanticSearch,
   simulateRefactor,
   scoreDependencyRisk,
+  summarizeEvolution,
   summarizeRepository
 } from "../packages/core/src/index.js";
 
@@ -120,4 +124,43 @@ test("summarizes multiple repositories as a workspace", async () => {
   assert.equal(workspace.repositoryCount, 2);
   assert.equal(workspace.totals.files, 8);
   assert.ok(workspace.sharedExternalPackages.some((item) => item.name === "express"));
+});
+
+test("summarizes history and infers ownership", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const history = summarizeEvolution([
+    {
+      hash: "a",
+      date: "2026-04-01",
+      author: "Ada",
+      subject: "update util",
+      files: [{ path: "src/util.ts", additions: 80, deletions: 20 }]
+    },
+    {
+      hash: "b",
+      date: "2026-04-02",
+      author: "Grace",
+      subject: "update app",
+      files: [{ path: "py/app.py", additions: 10, deletions: 5 }]
+    }
+  ]);
+  const ownership = inferOwnership(graph, history);
+
+  assert.equal(history.available, true);
+  assert.equal(history.commitsAnalyzed, 2);
+  assert.equal(history.fileHotspots[0].path, "src/util.ts");
+  assert.equal(ownership.available, true);
+  assert.equal(ownership.files.find((file) => file.path === "src/util.ts").primaryOwner, "Ada");
+});
+
+test("analyzes security surfaces and recommends architecture improvements", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const security = analyzeSecurityRisk(graph);
+  const recommendations = recommendArchitecture(graph);
+
+  assert.match(security.summary, /security architecture finding/);
+  assert.ok(security.packageSurfaces.some((item) => item.name === "express"));
+  assert.ok(Array.isArray(security.criticalBlastZones));
+  assert.ok(recommendations.recommendations.length > 0);
+  assert.ok(recommendations.signals.highRiskFiles >= 0);
 });
