@@ -8,16 +8,20 @@ import {
   analyzeRepository,
   analyzeSecurityRisk,
   calculateMetrics,
+  compareGraphSnapshots,
   compressContext,
+  createCiReport,
   createAgentContext,
   createGuidanceReport,
+  createGraphSnapshot,
   inferOwnership,
   recommendArchitecture,
   semanticSearch,
   simulateRefactor,
   scoreDependencyRisk,
   summarizeEvolution,
-  summarizeRepository
+  summarizeRepository,
+  validateGraph
 } from "../packages/core/src/index.js";
 
 const fixturePath = path.resolve("test/fixtures/sample-repo");
@@ -163,4 +167,46 @@ test("analyzes security surfaces and recommends architecture improvements", asyn
   assert.ok(Array.isArray(security.criticalBlastZones));
   assert.ok(recommendations.recommendations.length > 0);
   assert.ok(recommendations.signals.highRiskFiles >= 0);
+});
+
+test("validates graphs and creates comparable snapshots", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const validation = validateGraph(graph);
+  const snapshot = createGraphSnapshot(graph);
+  const modifiedSnapshot = {
+    ...snapshot,
+    fingerprint: "changed",
+    files: snapshot.files.concat({
+      path: "src/new.ts",
+      language: "javascript",
+      lineCount: 1,
+      symbolCount: 0,
+      incoming: 0,
+      outgoing: 0,
+      externalDependencies: 0,
+      fingerprint: "new"
+    }),
+    metrics: {
+      ...snapshot.metrics,
+      files: snapshot.metrics.files + 1
+    }
+  };
+  const comparison = compareGraphSnapshots(snapshot, modifiedSnapshot);
+
+  assert.equal(validation.valid, true);
+  assert.equal(snapshot.schema, "repograph.snapshot.v1");
+  assert.equal(comparison.changed, true);
+  assert.deepEqual(comparison.files.added, ["src/new.ts"]);
+  assert.equal(comparison.metrics.delta.files, 1);
+});
+
+test("creates CI reports from graph intelligence and optional baselines", async () => {
+  const graph = await analyzeRepository(fixturePath);
+  const baseline = createGraphSnapshot(graph);
+  const report = createCiReport(graph, { baseline, failOn: "high" });
+
+  assert.equal(report.validation.valid, true);
+  assert.equal(report.baselineComparison.changed, false);
+  assert.match(report.summary, /CI status/);
+  assert.ok(["pass", "fail"].includes(report.status));
 });

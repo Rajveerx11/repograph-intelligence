@@ -4,12 +4,16 @@ import {
   analyzeRepositoryHistory,
   analyzeRepository,
   analyzeSecurityRisk,
+  compareGraphSnapshots,
+  createCiReport,
   createAgentContext,
   createGuidanceReport,
+  createGraphSnapshot,
   inferOwnership,
   recommendArchitecture,
   semanticSearch,
-  summarizeRepository
+  summarizeRepository,
+  validateGraph
 } from "../../core/src/index.js";
 
 const tools = [
@@ -127,6 +131,53 @@ const tools = [
       properties: {
         repoPath: { type: "string" },
         limit: { type: "number" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_validate",
+    description: "Validate graph schema and edge/node references for a repository.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_snapshot",
+    description: "Create a stable graph intelligence snapshot for baseline comparison.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_compare",
+    description: "Compare two graph snapshots.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        baseSnapshot: { type: "object" },
+        headSnapshot: { type: "object" }
+      },
+      required: ["baseSnapshot", "headSnapshot"]
+    }
+  },
+  {
+    name: "repograph_ci",
+    description: "Create a CI-oriented structural intelligence report.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        baselineSnapshot: { type: "object" },
+        failOn: { type: "string" }
       },
       required: ["repoPath"]
     }
@@ -257,6 +308,24 @@ async function callTool(name, args) {
   if (name === "repograph_recommend") {
     const graph = await analyzeRepository(args.repoPath);
     return recommendArchitecture(graph, { limit: args.limit ?? 20 });
+  }
+  if (name === "repograph_validate") {
+    const graph = await analyzeRepository(args.repoPath);
+    return validateGraph(graph);
+  }
+  if (name === "repograph_snapshot") {
+    const graph = await analyzeRepository(args.repoPath);
+    return createGraphSnapshot(graph);
+  }
+  if (name === "repograph_compare") {
+    return compareGraphSnapshots(args.baseSnapshot, args.headSnapshot);
+  }
+  if (name === "repograph_ci") {
+    const graph = await analyzeRepository(args.repoPath);
+    return createCiReport(graph, {
+      baseline: args.baselineSnapshot,
+      failOn: args.failOn ?? "high"
+    });
   }
   throw new Error(`Unknown tool: ${name}`);
 }

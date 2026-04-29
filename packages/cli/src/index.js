@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -12,9 +12,12 @@ import {
   analyzeRepository,
   analyzeSecurityRisk,
   calculateMetrics,
+  compareGraphSnapshots,
   compressContext,
+  createCiReport,
   createAgentContext,
   createGuidanceReport,
+  createGraphSnapshot,
   inferOwnership,
   loadGraph,
   recommendArchitecture,
@@ -22,7 +25,8 @@ import {
   semanticSearch,
   simulateRefactor,
   scoreDependencyRisk,
-  summarizeRepository
+  summarizeRepository,
+  validateGraph
 } from "../../core/src/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -69,6 +73,14 @@ try {
     await securityCommand(args);
   } else if (command === "recommend") {
     await recommendCommand(args);
+  } else if (command === "validate") {
+    await validateCommand(args);
+  } else if (command === "snapshot") {
+    await snapshotCommand(args);
+  } else if (command === "compare") {
+    await compareCommand(args);
+  } else if (command === "ci") {
+    await ciCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -429,6 +441,104 @@ async function recommendCommand(args) {
   }
 }
 
+async function validateCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const validation = validateGraph(graph);
+
+  if (options.json) {
+    console.log(JSON.stringify(validation, null, 2));
+    return;
+  }
+
+  console.log(validation.summary);
+  for (const error of validation.errors) {
+    console.log(`ERROR ${error}`);
+  }
+  for (const warning of validation.warnings) {
+    console.log(`WARN ${warning}`);
+  }
+}
+
+async function snapshotCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const snapshot = createGraphSnapshot(graph);
+  const outputPath = options.out ?? path.join(path.resolve(target), ".repograph", "snapshot.json");
+
+  if (options.json && !options.out) {
+    console.log(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+
+  await writeJson(outputPath, snapshot);
+  console.log(`Snapshot: ${path.resolve(outputPath)}`);
+  console.log(snapshot.validation.summary);
+  console.log(`Fingerprint: ${snapshot.fingerprint}`);
+}
+
+async function compareCommand(args) {
+  const { positional, options } = parseTargetAndOptionsWithPositionals(args);
+  const basePath = options.base ?? positional[0];
+  const headPath = options.head ?? positional[1];
+
+  if (!basePath || !headPath) {
+    throw new Error("compare requires --base <snapshot> and --head <snapshot>");
+  }
+
+  const comparison = compareGraphSnapshots(await readJson(basePath), await readJson(headPath));
+
+  if (options.json) {
+    console.log(JSON.stringify(comparison, null, 2));
+    return;
+  }
+
+  console.log(comparison.summary);
+  console.log(`Changed: ${comparison.changed}`);
+  console.log(`Severity: ${comparison.severity}`);
+  console.log(`Added files: ${comparison.files.added.join(", ") || "none"}`);
+  console.log(`Removed files: ${comparison.files.removed.join(", ") || "none"}`);
+  console.log(`Changed files: ${comparison.files.changed.join(", ") || "none"}`);
+}
+
+async function ciCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const baseline = options.baseline ? await readJson(options.baseline) : null;
+  const report = createCiReport(graph, {
+    baseline,
+    failOn: options.failOn ?? "high"
+  });
+
+  if (options.out) {
+    await writeJson(options.out, report);
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(report.summary);
+    for (const finding of report.findings) {
+      const targetLabel = finding.target ? ` ${finding.target}` : "";
+      console.log(`- ${finding.severity.toUpperCase()} ${finding.type}${targetLabel}`);
+      console.log(`  ${finding.message}`);
+    }
+    if (options.out) {
+      console.log(`Report: ${path.resolve(options.out)}`);
+    }
+  }
+
+  if (report.status === "fail") {
+    process.exitCode = 1;
+  }
+}
+
 function parseTargetAndOptions(args) {
   const options = {};
   const positional = [];
@@ -472,6 +582,16 @@ function parseTargetAndOptions(args) {
     }
     if (arg === "--changed") {
       options.changed = requireValue(args, index, "--changed");
+      index += 1;
+      continue;
+    }
+    if (arg === "--baseline") {
+      options.baseline = requireValue(args, index, "--baseline");
+      index += 1;
+      continue;
+    }
+    if (arg === "--fail-on") {
+      options.failOn = requireValue(args, index, "--fail-on");
       index += 1;
       continue;
     }
@@ -573,6 +693,16 @@ function parseTargetAndOptionsWithPositionals(args) {
       index += 1;
       continue;
     }
+    if (arg === "--baseline") {
+      options.baseline = requireValue(args, index, "--baseline");
+      index += 1;
+      continue;
+    }
+    if (arg === "--fail-on") {
+      options.failOn = requireValue(args, index, "--fail-on");
+      index += 1;
+      continue;
+    }
     if (arg === "--json") {
       options.json = true;
       continue;
@@ -622,6 +752,17 @@ async function gitChangedFiles(target, options) {
   }
 }
 
+async function readJson(filePath) {
+  return JSON.parse(await readFile(path.resolve(filePath), "utf8"));
+}
+
+async function writeJson(filePath, value) {
+  const outputPath = path.resolve(filePath);
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return outputPath;
+}
+
 function printHelp() {
   console.log(`RepoGraph Intelligence CLI
 
@@ -643,6 +784,10 @@ Usage:
   repograph ownership [repo] [--limit n] [--json]
   repograph security [repo] [--limit n] [--json]
   repograph recommend [repo] [--limit n] [--json]
+  repograph validate [repo] [--graph path] [--json]
+  repograph snapshot [repo] [--graph path] [--out path] [--json]
+  repograph compare --base snapshot.json --head snapshot.json [--json]
+  repograph ci [repo] [--baseline snapshot.json] [--fail-on high|medium|low] [--out path] [--json]
   repograph mcp
 
 Commands:
@@ -663,6 +808,10 @@ Commands:
   ownership Infer file and module ownership from Git history
   security Identify security-sensitive architecture risk
   recommend Generate architecture improvement recommendations
+  validate Validate graph schema and references
+  snapshot Create a stable graph intelligence snapshot
+  compare  Compare two graph snapshots
+  ci       Produce CI-oriented structural intelligence report
   mcp      Start the RepoGraph MCP stdio server
 `);
 }

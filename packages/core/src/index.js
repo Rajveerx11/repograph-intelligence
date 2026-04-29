@@ -16,6 +16,12 @@ export {
 } from "./agent.js";
 export { analyzeRepositoryHistory, summarizeEvolution } from "./history.js";
 export { inferOwnership } from "./ownership.js";
+export {
+  compareGraphSnapshots,
+  createCiReport,
+  createGraphSnapshot,
+  validateGraph
+} from "./operations.js";
 export { recommendArchitecture } from "./recommendations.js";
 export { analyzeSecurityRisk } from "./security.js";
 export { analyzeRepositories, summarizeWorkspace } from "./workspace.js";

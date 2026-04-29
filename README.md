@@ -33,6 +33,10 @@ The current implementation is a dependency-light Node.js baseline that validates
 - Infers file and module ownership from contribution history
 - Identifies security-sensitive architecture risk and critical blast zones
 - Generates architecture recommendations for decoupling, stabilization, and boundary cleanup
+- Validates graph schema integrity and missing references
+- Creates stable graph snapshots for baselines and CI
+- Compares snapshots to detect structural drift
+- Produces CI-oriented structural intelligence reports
 
 ## Phase Coverage
 
@@ -43,6 +47,7 @@ The current implementation is a dependency-light Node.js baseline that validates
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
 | Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
 | Phase 5: Enterprise and Advanced Intelligence | In progress | History, ownership, security architecture risk, recommendations |
+| Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline comparison, CI reports |
 
 ## Quick Start
 
@@ -170,6 +175,30 @@ Generate architecture recommendations:
 npm run repograph -- recommend ./repo --limit 20
 ```
 
+Validate graph integrity:
+
+```bash
+npm run repograph -- validate ./repo
+```
+
+Create a stable graph snapshot:
+
+```bash
+npm run repograph -- snapshot ./repo --out .repograph/snapshot.json
+```
+
+Compare two graph snapshots:
+
+```bash
+npm run repograph -- compare --base baseline.json --head current.json
+```
+
+Generate a CI report:
+
+```bash
+npm run repograph -- ci ./repo --baseline .repograph/snapshot.json --fail-on high --out .repograph/ci-report.json
+```
+
 Start the MCP server:
 
 ```bash
@@ -204,6 +233,9 @@ On top of that graph, RepoGraph derives intelligence:
 - Ownership intelligence maps files and modules to likely maintainers from contribution history
 - Security intelligence highlights sensitive paths, wide external dependency surfaces, cycles, and critical blast zones
 - Recommendation generation turns structural signals into prioritized architecture actions
+- Graph validation checks schema integrity, duplicate ids, duplicate paths, and missing edge endpoints
+- Snapshots create stable fingerprints for baseline comparison
+- CI reports combine validation, security findings, recommendations, and baseline drift into pass/fail output
 
 ## AI and IDE Integration
 
@@ -228,6 +260,10 @@ The server exposes these tools:
 | `repograph_ownership` | Infer file and module ownership |
 | `repograph_security` | Identify security-sensitive architecture risk |
 | `repograph_recommend` | Generate architecture improvement recommendations |
+| `repograph_validate` | Validate graph schema and references |
+| `repograph_snapshot` | Create a stable graph intelligence snapshot |
+| `repograph_compare` | Compare two graph snapshots |
+| `repograph_ci` | Produce a CI-oriented structural intelligence report |
 
 The MCP server is intentionally local-first. It analyzes source on demand and does not require cloud services or model provider credentials.
 
@@ -248,6 +284,7 @@ packages/
       impact.js             Phase 3 impact intelligence
       metrics.js            Repository metrics
       ownership.js          Ownership inference from history
+      operations.js         Validation, snapshots, comparison, CI reports
       recommendations.js    Architecture recommendations
       repository.js         Repository analysis orchestration
       scanner.js            Recursive source scanner
@@ -261,6 +298,7 @@ test/
   fixtures/                 Small multi-language fixture repository
 docs/
   PRD.md                    Product requirements document
+  GRAPH_SCHEMA.md           Current graph and snapshot schema notes
 ```
 
 ## Development
@@ -290,10 +328,8 @@ The project intentionally avoids heavy runtime dependencies at this stage. That 
 Near-term priorities:
 
 - Replace regex-based extraction with Tree-sitter parsers
-- Add stable graph schema documentation
 - Persist graph indexes in SQLite
 - Add richer symbol-level references and call edges
-- Add PR-oriented output formats for CI
 - Add visualization using React Flow
 - Expand MCP tools for symbol-level references and saved graph resources
 - Improve historical drift scoring and ownership confidence
