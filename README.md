@@ -37,6 +37,9 @@ The repository currently includes a dependency-light Node.js implementation of t
 - normalized structural graph generation
 - graph persistence to `.repograph/graph.json`
 - repository metrics for dependency density, cycles, hotspots, coupling, and orphan files
+- local semantic search
+- architecture inference summaries
+- compressed AI-ready repository context
 - CLI commands matching the PRD shape
 
 Rust remains the preferred long-term core engine, but the current Node.js implementation gives the project a runnable baseline while the architecture stabilizes.
@@ -47,12 +50,27 @@ Rust remains the preferred long-term core engine, but the current Node.js implem
 npm run repograph -- analyze ./repo
 npm run repograph -- graph ./repo
 npm run repograph -- stats ./repo
+npm run repograph -- search ./repo "authentication flow"
+npm run repograph -- explain ./repo
+npm run repograph -- context ./repo
 ```
 
 Analyze this repository:
 
 ```bash
 npm run repograph -- analyze .
+```
+
+Search this repository:
+
+```bash
+npm run repograph -- search . "repository graph metrics"
+```
+
+Generate compressed AI context:
+
+```bash
+npm run repograph -- context . --out .repograph/context.md
 ```
 
 Run checks:

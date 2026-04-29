@@ -21,7 +21,10 @@ export function buildGraph({ root, files }) {
       type: "file",
       label: path.basename(file.relativePath),
       path: file.relativePath,
-      language: file.language
+      language: file.language,
+      lineCount: file.lineCount,
+      semanticText: file.semanticText,
+      symbolCount: file.symbols.length
     });
 
     for (const symbol of file.symbols) {
@@ -169,4 +172,3 @@ function packageNodeId(packageName) {
 function edgeId(type, from, to, extra = "") {
   return `${type}:${from}->${to}:${extra}`;
 }
-
