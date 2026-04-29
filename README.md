@@ -27,7 +27,41 @@ Most AI coding tools understand files, chunks, prompts, and embeddings. RepoGrap
 - Search: Tantivy
 - AI: local and cloud-compatible model providers
 
+## Current Implementation
+
+The repository currently includes a dependency-light Node.js implementation of the first Phase 1 slice:
+
+- recursive repository scanning
+- JavaScript, TypeScript, and Python file detection
+- import and symbol extraction
+- normalized structural graph generation
+- graph persistence to `.repograph/graph.json`
+- repository metrics for dependency density, cycles, hotspots, coupling, and orphan files
+- CLI commands matching the PRD shape
+
+Rust remains the preferred long-term core engine, but the current Node.js implementation gives the project a runnable baseline while the architecture stabilizes.
+
+## CLI
+
+```bash
+npm run repograph -- analyze ./repo
+npm run repograph -- graph ./repo
+npm run repograph -- stats ./repo
+```
+
+Analyze this repository:
+
+```bash
+npm run repograph -- analyze .
+```
+
+Run checks:
+
+```bash
+npm run check
+npm test
+```
+
 ## Documentation
 
 - [Product Requirements Document](docs/PRD.md)
-
