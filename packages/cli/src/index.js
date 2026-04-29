@@ -1,16 +1,24 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
+  analyzeChangedFiles,
+  analyzeImpact,
   analyzeRepository,
   calculateMetrics,
   compressContext,
   loadGraph,
   saveGraph,
   semanticSearch,
+  simulateRefactor,
+  scoreDependencyRisk,
   summarizeRepository
 } from "../../core/src/index.js";
 
+const execFileAsync = promisify(execFile);
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
@@ -32,6 +40,14 @@ try {
     await explainCommand(args);
   } else if (command === "context") {
     await contextCommand(args);
+  } else if (command === "impact") {
+    await impactCommand(args);
+  } else if (command === "risk") {
+    await riskCommand(args);
+  } else if (command === "simulate") {
+    await simulateCommand(args);
+  } else if (command === "diff") {
+    await diffCommand(args);
   } else {
     throw new Error(`Unknown command: ${command}`);
   }
@@ -136,6 +152,86 @@ async function contextCommand(args) {
   console.log(context);
 }
 
+async function impactCommand(args) {
+  const { target, paths, options } = parsePathCommandArgs(args, "impact");
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const impact = analyzeImpact(graph, paths, { maxDepth: Number(options.depth ?? Infinity) });
+
+  if (options.json) {
+    console.log(JSON.stringify(impact, null, 2));
+    return;
+  }
+
+  console.log(`Changed files: ${impact.changedFiles.join(", ") || "none matched"}`);
+  console.log(`Blast radius: ${impact.blastRadius}`);
+  console.log(`Risk: ${impact.risk.level} (${impact.risk.reason})`);
+  console.log(`Direct dependents: ${impact.directDependents.join(", ") || "none"}`);
+  console.log(`Transitive dependents: ${impact.transitiveDependents.map((item) => item.path).join(", ") || "none"}`);
+}
+
+async function riskCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const risks = scoreDependencyRisk(graph).slice(0, Number(options.limit ?? 20));
+
+  if (options.json) {
+    console.log(JSON.stringify(risks, null, 2));
+    return;
+  }
+
+  for (const item of risks) {
+    console.log(`${String(item.score).padStart(3, " ")}  ${item.level.padEnd(6, " ")}  ${item.path}`);
+    console.log(`     ${item.reasons.join("; ")}`);
+  }
+}
+
+async function simulateCommand(args) {
+  const { target, paths, options } = parsePathCommandArgs(args, "simulate");
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const simulation = simulateRefactor(graph, paths, { maxDepth: Number(options.depth ?? Infinity) });
+
+  if (options.json) {
+    console.log(JSON.stringify(simulation, null, 2));
+    return;
+  }
+
+  console.log(`Change set: ${simulation.changeSet.join(", ") || "none matched"}`);
+  console.log(`Touched modules: ${simulation.touchedModules.join(", ") || "none"}`);
+  console.log(`Risk: ${simulation.risk.level}`);
+  console.log(`Blast radius: ${simulation.impact.blastRadius}`);
+  console.log("Recommendations:");
+  for (const recommendation of simulation.recommendations) {
+    console.log(`- ${recommendation}`);
+  }
+}
+
+async function diffCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const changedFiles = await gitChangedFiles(target, options);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const analysis = analyzeChangedFiles(graph, changedFiles, { maxDepth: Number(options.depth ?? Infinity) });
+
+  if (options.json) {
+    console.log(JSON.stringify(analysis, null, 2));
+    return;
+  }
+
+  console.log(analysis.summary);
+  console.log(`Changed files: ${analysis.changedFiles.join(", ") || "none matched in graph"}`);
+  console.log(`Recommendations:`);
+  for (const recommendation of analysis.recommendations) {
+    console.log(`- ${recommendation}`);
+  }
+}
+
 function parseTargetAndOptions(args) {
   const options = {};
   const positional = [];
@@ -157,6 +253,21 @@ function parseTargetAndOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === "--depth") {
+      options.depth = requireValue(args, index, "--depth");
+      index += 1;
+      continue;
+    }
+    if (arg === "--base") {
+      options.base = requireValue(args, index, "--base");
+      index += 1;
+      continue;
+    }
+    if (arg === "--head") {
+      options.head = requireValue(args, index, "--head");
+      index += 1;
+      continue;
+    }
     if (arg === "--json") {
       options.json = true;
       continue;
@@ -168,6 +279,23 @@ function parseTargetAndOptions(args) {
     target: positional[0] ?? ".",
     options
   };
+}
+
+function parsePathCommandArgs(args, commandName) {
+  const { positional, options } = parseTargetAndOptionsWithPositionals(args);
+  let target = ".";
+  let paths = positional;
+
+  if (positional.length > 1 && looksLikeDirectory(positional[0])) {
+    target = positional[0];
+    paths = positional.slice(1);
+  }
+
+  if (!paths.length) {
+    throw new Error(`${commandName} requires at least one file path`);
+  }
+
+  return { target, paths, options };
 }
 
 function parseSearchArgs(args) {
@@ -213,6 +341,21 @@ function parseTargetAndOptionsWithPositionals(args) {
       index += 1;
       continue;
     }
+    if (arg === "--depth") {
+      options.depth = requireValue(args, index, "--depth");
+      index += 1;
+      continue;
+    }
+    if (arg === "--base") {
+      options.base = requireValue(args, index, "--base");
+      index += 1;
+      continue;
+    }
+    if (arg === "--head") {
+      options.head = requireValue(args, index, "--head");
+      index += 1;
+      continue;
+    }
     if (arg === "--json") {
       options.json = true;
       continue;
@@ -235,6 +378,33 @@ function requireValue(args, index, optionName) {
   return value;
 }
 
+function looksLikeDirectory(value) {
+  if (value === "." || value === "..") {
+    return true;
+  }
+  const absolutePath = path.resolve(value);
+  return existsSync(absolutePath) && statSync(absolutePath).isDirectory();
+}
+
+async function gitChangedFiles(target, options) {
+  const base = options.base ?? "origin/main";
+  const head = options.head ?? "HEAD";
+  const range = base === head ? head : `${base}...${head}`;
+  try {
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      path.resolve(target),
+      "diff",
+      "--name-only",
+      "--diff-filter=ACMRTUXB",
+      range
+    ]);
+    return stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  } catch (error) {
+    throw new Error(`failed to read git diff for ${range}: ${error.message}`);
+  }
+}
+
 function printHelp() {
   console.log(`RepoGraph Intelligence CLI
 
@@ -245,6 +415,10 @@ Usage:
   repograph search [repo] <query> [--limit n] [--json]
   repograph explain [repo] [--graph path] [--json]
   repograph context [repo] [--graph path] [--out path]
+  repograph impact [repo] <file...> [--depth n] [--json]
+  repograph risk [repo] [--limit n] [--json]
+  repograph simulate [repo] <file...> [--depth n] [--json]
+  repograph diff [repo] [--base ref] [--head ref] [--json]
 
 Commands:
   analyze  Analyze a repository and save .repograph/graph.json
@@ -253,5 +427,9 @@ Commands:
   search   Search files by local semantic relevance
   explain  Print an architecture and repository intelligence summary
   context  Print compressed AI-ready repository context
+  impact   Show blast radius for changed files
+  risk     Rank files by dependency risk
+  simulate Simulate structural effects of a change set
+  diff     Analyze changed files from a Git diff
 `);
 }

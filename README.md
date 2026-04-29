@@ -2,84 +2,236 @@
 
 RepoGraph Intelligence is an AI-native structural intelligence engine for software repositories.
 
-It helps developers and AI systems understand how large codebases behave by converting repositories into live semantic graphs that can be analyzed, queried, visualized, and reasoned about.
+It analyzes a codebase as a dependency graph, enriches that graph with semantic signals, and exposes repository intelligence through a CLI that can answer questions about structure, search, architecture, and change impact.
 
-## Core Idea
+The goal is not to be another autocomplete tool or chat wrapper. RepoGraph focuses on the missing layer underneath AI-assisted development: durable structural context about how a repository is connected and what a change is likely to affect.
 
-Most AI coding tools understand files, chunks, prompts, and embeddings. RepoGraph Intelligence focuses on structural intelligence: system-level reasoning about dependencies, architecture, coupling, impact, and repository behavior.
+## Status
 
-## Initial MVP Priorities
+This project is in active early development.
 
-1. Repository parser
-2. AST extraction
-3. Dependency graph generation
-4. Graph database layer
-5. Visualization UI
-6. CLI
+The current implementation is a dependency-light Node.js baseline that validates the product model and CLI contracts. The long-term core engine is expected to move toward Rust, Tree-sitter, SQLite/DuckDB, and a richer graph storage layer as the system matures.
 
-## Planned Stack
+## What It Does Today
 
-- Frontend: React, TypeScript, TailwindCSS, Zustand, React Flow
-- Desktop: Tauri
-- Core engine: Rust
-- Storage: SQLite, DuckDB
-- Parsing: Tree-sitter
-- Search: Tantivy
-- AI: local and cloud-compatible model providers
+- Recursively scans JavaScript, TypeScript, and Python repositories
+- Extracts imports, exports, functions, classes, interfaces, and Python definitions
+- Builds a normalized file, symbol, package, and dependency graph
+- Calculates structural metrics such as density, cycles, hotspots, coupling, and orphan files
+- Performs local semantic search over paths, symbols, imports, comments, and identifiers
+- Infers modules, layers, architecture boundaries, and structural risk signals
+- Generates compressed AI-ready repository context
+- Estimates blast radius for changed files
+- Scores dependency risk across the repository
+- Simulates refactor/change-set impact
+- Analyzes changed files from a Git diff
 
-## Current Implementation
+## Phase Coverage
 
-The repository currently includes a dependency-light Node.js implementation of the first Phase 1 slice:
+| PRD phase | Status | Current capability |
+| --- | --- | --- |
+| Phase 1: Repository Structural Engine | In progress | Parser, graph generation, metrics, JSON persistence, CLI |
+| Phase 2: Semantic Intelligence Layer | In progress | Local semantic search, architecture summaries, context compression |
+| Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
+| Phase 4: AI Agent and IDE Ecosystem | Planned | MCP server, IDE integrations, context APIs |
+| Phase 5: Enterprise and Advanced Intelligence | Planned | History, ownership, security, recommendations |
 
-- recursive repository scanning
-- JavaScript, TypeScript, and Python file detection
-- import and symbol extraction
-- normalized structural graph generation
-- graph persistence to `.repograph/graph.json`
-- repository metrics for dependency density, cycles, hotspots, coupling, and orphan files
-- local semantic search
-- architecture inference summaries
-- compressed AI-ready repository context
-- CLI commands matching the PRD shape
+## Quick Start
 
-Rust remains the preferred long-term core engine, but the current Node.js implementation gives the project a runnable baseline while the architecture stabilizes.
+Requirements:
 
-## CLI
+- Node.js 20 or newer
+- npm
+- Git
+
+Clone and run:
 
 ```bash
-npm run repograph -- analyze ./repo
-npm run repograph -- graph ./repo
-npm run repograph -- stats ./repo
-npm run repograph -- search ./repo "authentication flow"
-npm run repograph -- explain ./repo
-npm run repograph -- context ./repo
+git clone https://github.com/Rajveerx11/repograph-intelligence.git
+cd repograph-intelligence
+npm test
 ```
 
-Analyze this repository:
+Analyze the current repository:
 
 ```bash
 npm run repograph -- analyze .
 ```
 
-Search this repository:
+This writes the normalized graph to:
+
+```text
+.repograph/graph.json
+```
+
+## CLI Usage
+
+Analyze a repository and persist the graph:
 
 ```bash
-npm run repograph -- search . "repository graph metrics"
+npm run repograph -- analyze ./repo
+```
+
+Print repository metrics:
+
+```bash
+npm run repograph -- stats ./repo
+```
+
+Search semantically across files:
+
+```bash
+npm run repograph -- search ./repo "authentication flow"
+```
+
+Explain inferred architecture:
+
+```bash
+npm run repograph -- explain ./repo
 ```
 
 Generate compressed AI context:
 
 ```bash
-npm run repograph -- context . --out .repograph/context.md
+npm run repograph -- context ./repo --out .repograph/context.md
 ```
 
-Run checks:
+Estimate blast radius for a changed file:
+
+```bash
+npm run repograph -- impact ./repo src/auth/session.ts
+```
+
+Rank dependency risk:
+
+```bash
+npm run repograph -- risk ./repo --limit 20
+```
+
+Simulate a refactor or change set:
+
+```bash
+npm run repograph -- simulate ./repo src/auth/session.ts src/auth/user.ts
+```
+
+Analyze changed files from a Git diff:
+
+```bash
+npm run repograph -- diff ./repo --base origin/main --head HEAD
+```
+
+Every intelligence command supports JSON output where useful:
+
+```bash
+npm run repograph -- impact ./repo src/auth/session.ts --json
+```
+
+## Core Concepts
+
+RepoGraph represents a repository as a graph:
+
+- File nodes represent source files
+- Symbol nodes represent functions, classes, interfaces, and definitions
+- Package nodes represent external dependencies
+- Edges represent containment, imports, and dependency relationships
+
+On top of that graph, RepoGraph derives intelligence:
+
+- Structural metrics identify coupling and graph shape
+- Semantic search maps natural-language queries to relevant files
+- Architecture inference groups files into modules, layers, and boundaries
+- Impact analysis walks reverse dependency paths to estimate downstream blast radius
+- Risk scoring ranks files by fan-in, fan-out, external dependencies, symbols, and cycles
+
+## Project Layout
+
+```text
+packages/
+  cli/
+    src/index.js            CLI entrypoint
+  core/
+    src/
+      architecture.js       Architecture inference
+      graph.js              Normalized graph builder
+      impact.js             Phase 3 impact intelligence
+      metrics.js            Repository metrics
+      repository.js         Repository analysis orchestration
+      scanner.js            Recursive source scanner
+      semantic.js           Local semantic index/search
+      storage.js            Graph persistence
+      summaries.js          Repository summaries and context compression
+test/
+  core.test.js              Core behavior tests
+  fixtures/                 Small multi-language fixture repository
+docs/
+  PRD.md                    Product requirements document
+```
+
+## Development
+
+Run syntax checks:
+
+```bash
+npm run check
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run the CLI locally:
+
+```bash
+npm run repograph -- help
+```
+
+The project intentionally avoids heavy runtime dependencies at this stage. That keeps the architecture easy to inspect while the graph model, CLI behavior, and intelligence APIs stabilize.
+
+## Roadmap
+
+Near-term priorities:
+
+- Replace regex-based extraction with Tree-sitter parsers
+- Add stable graph schema documentation
+- Persist graph indexes in SQLite
+- Add richer symbol-level references and call edges
+- Add PR-oriented output formats for CI
+- Add visualization using React Flow
+- Add MCP server support for AI assistants and coding agents
+
+Longer-term priorities:
+
+- Rust core engine
+- Incremental repository indexing
+- Historical architecture drift analysis
+- Ownership and team intelligence
+- Security and dependency path risk analysis
+- Multi-repository intelligence
+
+## Design Principles
+
+- The graph is infrastructure, not the product.
+- Repository intelligence should be explainable and inspectable.
+- Local analysis should work before cloud or model-backed features are required.
+- AI context should be grounded in structural facts, not only embeddings.
+- Every feature should help developers understand risk, architecture, or change impact.
+
+## Contributing
+
+Contributions are welcome, especially around parser support, graph algorithms, architecture rules, CLI ergonomics, and test fixtures.
+
+Before opening a pull request:
 
 ```bash
 npm run check
 npm test
 ```
 
-## Documentation
+For larger changes, please include a short explanation of the repository behavior being modeled and the tradeoffs in the implementation.
 
-- [Product Requirements Document](docs/PRD.md)
+## License
+
+MIT
+

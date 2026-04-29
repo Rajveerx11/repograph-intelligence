@@ -1,7 +1,6 @@
 {
   "name": "repograph-intelligence",
   "version": "0.1.0",
-  "private": true,
   "description": "AI-native structural intelligence engine for software repositories.",
   "type": "module",
   "bin": {
@@ -21,5 +20,13 @@
     "architecture",
     "static-analysis"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rajveerx11/repograph-intelligence.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Rajveerx11/repograph-intelligence/issues"
+  },
+  "homepage": "https://github.com/Rajveerx11/repograph-intelligence#readme",
   "license": "MIT"
 }
