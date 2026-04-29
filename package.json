@@ -11,7 +11,8 @@
     "repograph": "node ./packages/cli/src/index.js",
     "mcp": "node ./packages/mcp/src/server.js",
     "test": "node --test \"test/*.test.js\"",
-    "check": "node --check ./packages/cli/src/index.js && node --check ./packages/mcp/src/server.js"
+    "check": "node --check ./packages/cli/src/index.js && node --check ./packages/mcp/src/server.js",
+    "audit": "npm audit --omit=dev"
   },
   "engines": {
     "node": ">=20"

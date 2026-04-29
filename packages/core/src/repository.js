@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { extractJavaScriptFacts } from "./extractors/javascript.js";
 import { extractPythonFacts } from "./extractors/python.js";
@@ -8,13 +8,20 @@ import { createSemanticText } from "./semantic.js";
 
 const JS_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]);
 const PY_EXTENSIONS = new Set([".py"]);
+const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export async function analyzeRepository(repoPath, options = {}) {
   const root = path.resolve(repoPath);
   const files = await scanRepository(root, options);
   const facts = [];
+  const maxFileBytes = boundedNumber(options.maxFileBytes, DEFAULT_MAX_FILE_BYTES, 1024, 25 * 1024 * 1024);
 
   for (const file of files) {
+    const fileStat = await stat(file.absolutePath);
+    if (fileStat.size > maxFileBytes) {
+      continue;
+    }
+
     const source = await readFile(file.absolutePath, "utf8");
     const extension = path.extname(file.absolutePath).toLowerCase();
 
@@ -34,4 +41,12 @@ function withSemanticText(fileFacts, source) {
     lineCount: source.split(/\r?\n/).length,
     semanticText: createSemanticText(fileFacts, source)
   };
+}
+
+function boundedNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(number)));
 }

@@ -16,6 +16,10 @@ import {
   validateGraph
 } from "../../core/src/index.js";
 
+const MAX_MESSAGE_BYTES = 1024 * 1024;
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 10;
+
 const tools = [
   {
     name: "repograph_analyze",
@@ -187,27 +191,48 @@ const tools = [
 let buffer = "";
 
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", async (chunk) => {
+process.stdin.on("data", (chunk) => {
   buffer += chunk;
-  await drainMessages();
+  if (Buffer.byteLength(buffer, "utf8") > MAX_MESSAGE_BYTES) {
+    buffer = "";
+    sendError(null, -32700, "Message exceeds maximum size.");
+    return;
+  }
+
+  drainMessages().catch((error) => {
+    buffer = "";
+    sendError(null, -32700, error.message);
+  });
 });
 
 async function drainMessages() {
   while (buffer.length) {
-    const framed = readFramedMessage();
-    if (!framed) {
-      const newline = buffer.indexOf("\n");
-      if (newline === -1) {
+    if (buffer.startsWith("Content-Length:")) {
+      const framed = readFramedMessage();
+      if (!framed) {
         return;
       }
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      if (line) {
-        await handleMessage(JSON.parse(line));
-      }
+      await handleParsedMessage(framed);
       continue;
     }
-    await handleMessage(JSON.parse(framed));
+
+    const newline = buffer.indexOf("\n");
+    if (newline === -1) {
+      return;
+    }
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line) {
+      await handleParsedMessage(line);
+    }
+  }
+}
+
+async function handleParsedMessage(source) {
+  try {
+    await handleMessage(parseJsonMessage(source));
+  } catch (error) {
+    sendError(null, -32700, error.message);
   }
 }
 
@@ -222,6 +247,12 @@ function readFramedMessage() {
     throw new Error("Missing Content-Length header");
   }
   const length = Number(match[1]);
+  if (!Number.isSafeInteger(length) || length < 0) {
+    throw new Error("Invalid Content-Length header");
+  }
+  if (length > MAX_MESSAGE_BYTES) {
+    throw new Error("Message exceeds maximum size.");
+  }
   const start = separator + 4;
   const end = start + length;
   if (buffer.length < end) {
@@ -234,6 +265,11 @@ function readFramedMessage() {
 
 async function handleMessage(message) {
   try {
+    if (!message || typeof message !== "object") {
+      sendError(null, -32600, "Invalid JSON-RPC message.");
+      return;
+    }
+
     if (message.method === "initialize") {
       sendResponse(message.id, {
         protocolVersion: "2024-11-05",
@@ -270,64 +306,137 @@ async function handleMessage(message) {
 }
 
 async function callTool(name, args) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new Error("Tool arguments must be an object.");
+  }
+
   if (name === "repograph_analyze") {
-    const graph = await analyzeRepository(args.repoPath);
+    const graph = await analyzeRepository(requireRepoPath(args));
     return summarizeRepository(graph);
   }
   if (name === "repograph_search") {
-    const graph = await analyzeRepository(args.repoPath);
-    return semanticSearch(graph, args.query, { limit: args.limit ?? 10 });
+    const graph = await analyzeRepository(requireRepoPath(args));
+    return semanticSearch(graph, requireString(args.query, "query"), { limit: boundedLimit(args.limit) });
   }
   if (name === "repograph_context") {
-    const graph = await analyzeRepository(args.repoPath);
+    const graph = await analyzeRepository(requireRepoPath(args));
     return createAgentContext(graph, {
-      query: args.query,
-      changedFiles: args.changedFiles ?? []
+      query: optionalString(args.query, "query"),
+      changedFiles: stringArray(args.changedFiles, "changedFiles")
     });
   }
   if (name === "repograph_impact") {
-    const graph = await analyzeRepository(args.repoPath);
-    return analyzeImpact(graph, args.changedFiles ?? []);
+    const graph = await analyzeRepository(requireRepoPath(args));
+    return analyzeImpact(graph, stringArray(args.changedFiles, "changedFiles"));
   }
   if (name === "repograph_guidance") {
-    const graph = await analyzeRepository(args.repoPath);
-    return createGuidanceReport(graph, { changedFiles: args.changedFiles ?? [] });
+    const graph = await analyzeRepository(requireRepoPath(args));
+    return createGuidanceReport(graph, { changedFiles: stringArray(args.changedFiles, "changedFiles") });
   }
   if (name === "repograph_history") {
-    return analyzeRepositoryHistory(args.repoPath, { limit: args.limit ?? 200 });
+    return analyzeRepositoryHistory(requireRepoPath(args), { limit: boundedLimit(args.limit, 200, 5000) });
   }
   if (name === "repograph_ownership") {
-    const graph = await analyzeRepository(args.repoPath);
-    const history = await analyzeRepositoryHistory(args.repoPath, { limit: args.limit ?? 200 });
+    const repoPath = requireRepoPath(args);
+    const graph = await analyzeRepository(repoPath);
+    const history = await analyzeRepositoryHistory(repoPath, { limit: boundedLimit(args.limit, 200, 5000) });
     return inferOwnership(graph, history);
   }
   if (name === "repograph_security") {
-    const graph = await analyzeRepository(args.repoPath);
-    return analyzeSecurityRisk(graph, { limit: args.limit ?? 10 });
+    const graph = await analyzeRepository(requireRepoPath(args));
+    return analyzeSecurityRisk(graph, { limit: boundedLimit(args.limit) });
   }
   if (name === "repograph_recommend") {
-    const graph = await analyzeRepository(args.repoPath);
-    return recommendArchitecture(graph, { limit: args.limit ?? 20 });
+    const graph = await analyzeRepository(requireRepoPath(args));
+    return recommendArchitecture(graph, { limit: boundedLimit(args.limit, 20) });
   }
   if (name === "repograph_validate") {
-    const graph = await analyzeRepository(args.repoPath);
+    const graph = await analyzeRepository(requireRepoPath(args));
     return validateGraph(graph);
   }
   if (name === "repograph_snapshot") {
-    const graph = await analyzeRepository(args.repoPath);
+    const graph = await analyzeRepository(requireRepoPath(args));
     return createGraphSnapshot(graph);
   }
   if (name === "repograph_compare") {
-    return compareGraphSnapshots(args.baseSnapshot, args.headSnapshot);
+    return compareGraphSnapshots(requireObject(args.baseSnapshot, "baseSnapshot"), requireObject(args.headSnapshot, "headSnapshot"));
   }
   if (name === "repograph_ci") {
-    const graph = await analyzeRepository(args.repoPath);
+    const graph = await analyzeRepository(requireRepoPath(args));
     return createCiReport(graph, {
-      baseline: args.baselineSnapshot,
-      failOn: args.failOn ?? "high"
+      baseline: optionalObject(args.baselineSnapshot, "baselineSnapshot"),
+      failOn: optionalSeverity(args.failOn)
     });
   }
   throw new Error(`Unknown tool: ${name}`);
+}
+
+function parseJsonMessage(source) {
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw new Error("Invalid JSON message.");
+  }
+}
+
+function requireRepoPath(args) {
+  return requireString(args.repoPath, "repoPath");
+}
+
+function requireString(value, name) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function optionalString(value, name) {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requireString(value, name);
+}
+
+function stringArray(value, name) {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${name} must be an array of strings.`);
+  }
+  return value;
+}
+
+function requireObject(value, name) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${name} must be an object.`);
+  }
+  return value;
+}
+
+function optionalObject(value, name) {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requireObject(value, name);
+}
+
+function optionalSeverity(value) {
+  if (value === undefined) {
+    return "high";
+  }
+  if (!["high", "medium", "low"].includes(value)) {
+    throw new Error("failOn must be high, medium, or low.");
+  }
+  return value;
+}
+
+function boundedLimit(value, fallback = DEFAULT_LIMIT, max = MAX_LIMIT) {
+  const number = Number(value ?? fallback);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(1, Math.floor(number)));
 }
 
 function sendResponse(id, result) {

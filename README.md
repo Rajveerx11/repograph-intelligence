@@ -315,6 +315,12 @@ Run tests:
 npm test
 ```
 
+Run dependency audit:
+
+```bash
+npm run audit
+```
+
 Run the CLI locally:
 
 ```bash

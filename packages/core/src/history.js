@@ -3,10 +3,12 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_HISTORY_LIMIT = 200;
+const MAX_HISTORY_LIMIT = 5000;
 
 export async function analyzeRepositoryHistory(repoPath, options = {}) {
   const root = path.resolve(repoPath);
-  const limit = Number(options.limit ?? 200);
+  const limit = boundedNumber(options.limit, DEFAULT_HISTORY_LIMIT, 1, MAX_HISTORY_LIMIT);
 
   try {
     const { stdout } = await execFileAsync("git", [
@@ -279,4 +281,12 @@ function moduleFromPath(filePath) {
 
 function normalizePath(filePath) {
   return filePath.replace(/\\/g, "/");
+}
+
+function boundedNumber(value, fallback, min, max) {
+  const number = Number(value ?? fallback);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(number)));
 }

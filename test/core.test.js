@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -210,3 +213,63 @@ test("creates CI reports from graph intelligence and optional baselines", async 
   assert.match(report.summary, /CI status/);
   assert.ok(["pass", "fail"].includes(report.status));
 });
+
+test("bounds repository analysis to avoid oversized scans and files", async () => {
+  const repoPath = await mkdtemp(path.join(os.tmpdir(), "repograph-security-"));
+  await mkdir(path.join(repoPath, "src"));
+  await writeFile(path.join(repoPath, "src", "small.ts"), "export function small() { return 1; }\n", "utf8");
+  await writeFile(path.join(repoPath, "src", "large.ts"), `export const large = "${"x".repeat(2048)}";\n`, "utf8");
+
+  const graph = await analyzeRepository(repoPath, { maxFileBytes: 1024 });
+
+  assert.ok(graph.nodes.some((node) => node.id === "file:src/small.ts"));
+  assert.ok(!graph.nodes.some((node) => node.id === "file:src/large.ts"));
+  await assert.rejects(() => analyzeRepository(repoPath, { maxFiles: 1 }), /max file count/);
+});
+
+test("MCP server handles malformed input without dropping subsequent requests", async () => {
+  const output = await runMcpProbe([
+    "{bad json}\n",
+    framedMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
+  ]);
+
+  assert.match(output, /Invalid JSON message/);
+  assert.match(output, /repograph_validate/);
+});
+
+function runMcpProbe(messages) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["packages/mcp/src/server.js"], {
+      cwd: process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+
+    for (const message of messages) {
+      child.stdin.write(message);
+    }
+
+    setTimeout(() => {
+      child.kill();
+      if (stderr) {
+        reject(new Error(stderr));
+        return;
+      }
+      resolve(stdout);
+    }, 300);
+  });
+}
+
+function framedMessage(message) {
+  const body = JSON.stringify(message);
+  return `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`;
+}

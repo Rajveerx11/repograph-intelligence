@@ -1,6 +1,9 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 
+const DEFAULT_MAX_DEPTH = 64;
+const DEFAULT_MAX_FILES = 20000;
+
 const DEFAULT_IGNORED_DIRECTORIES = new Set([
   ".git",
   ".hg",
@@ -34,9 +37,15 @@ export async function scanRepository(root, options = {}) {
     ...DEFAULT_IGNORED_DIRECTORIES,
     ...(options.ignoredDirectories ?? [])
   ]);
+  const maxDepth = boundedNumber(options.maxDepth, DEFAULT_MAX_DEPTH, 1, 512);
+  const maxFiles = boundedNumber(options.maxFiles, DEFAULT_MAX_FILES, 1, 100000);
   const files = [];
 
-  async function visit(directory) {
+  async function visit(directory, depth) {
+    if (depth > maxDepth) {
+      throw new Error(`repository scan exceeded max depth of ${maxDepth}`);
+    }
+
     const entries = await readdir(directory, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -44,7 +53,7 @@ export async function scanRepository(root, options = {}) {
 
       if (entry.isDirectory()) {
         if (!ignoredDirectories.has(entry.name)) {
-          await visit(absolutePath);
+          await visit(absolutePath, depth + 1);
         }
         continue;
       }
@@ -63,10 +72,14 @@ export async function scanRepository(root, options = {}) {
         relativePath: toGraphPath(path.relative(root, absolutePath)),
         extension
       });
+
+      if (files.length > maxFiles) {
+        throw new Error(`repository scan exceeded max file count of ${maxFiles}`);
+      }
     }
   }
 
-  await visit(root);
+  await visit(root, 0);
   files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   return files;
 }
@@ -75,3 +88,10 @@ export function toGraphPath(filePath) {
   return filePath.split(path.sep).join("/");
 }
 
+function boundedNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.floor(number)));
+}
