@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const DEFAULT_HISTORY_LIMIT = 200;
 const MAX_HISTORY_LIMIT = 5000;
+const GIT_TIMEOUT_MS = 15000;
+const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
 export async function analyzeRepositoryHistory(repoPath, options = {}) {
   const root = path.resolve(repoPath);
@@ -19,7 +21,10 @@ export async function analyzeRepositoryHistory(repoPath, options = {}) {
       "--date=short",
       "--numstat",
       "--pretty=format:--RG-COMMIT--%H%x09%ad%x09%an%x09%s"
-    ]);
+    ], {
+      maxBuffer: GIT_MAX_BUFFER_BYTES,
+      timeout: GIT_TIMEOUT_MS
+    });
 
     return summarizeEvolution(parseGitLog(stdout), { root, limit });
   } catch (error) {

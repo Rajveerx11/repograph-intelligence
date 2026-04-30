@@ -21,7 +21,13 @@ const webDir = __dirname;
 const graphPath = path.join(rootDir, ".repograph", "graph.json");
 const contextPath = path.join(rootDir, ".repograph", "context.md");
 const agentContextPath = path.join(rootDir, ".repograph", "agent-context.json");
-const port = Number(process.env.PORT ?? 5173);
+const maxApiBodyBytes = 64 * 1024;
+const maxTextInputLength = 2000;
+const port = sanitizePort(process.env.PORT, 5173);
+const allowedOrigins = new Set([
+  `http://127.0.0.1:${port}`,
+  `http://localhost:${port}`
+]);
 
 const vite = await createViteServer({
   appType: "spa",
@@ -43,8 +49,13 @@ const server = createServer(async (request, response) => {
       response.end("Not found");
     });
   } catch (error) {
+    if (error instanceof HttpError) {
+      sendJson(response, error.statusCode, { error: error.message });
+      return;
+    }
+    console.error(error);
     sendJson(response, 500, {
-      error: error instanceof Error ? error.message : "Unexpected server error."
+      error: "Unexpected server error."
     });
   }
 });
@@ -59,14 +70,19 @@ async function handleApi(request, response) {
     return;
   }
 
-  const body = await readRequestJson(request);
+  if (!isTrustedOrigin(request)) {
+    sendJson(response, 403, { error: "Untrusted request origin." });
+    return;
+  }
+
+  const body = await readRequestJson(request, maxApiBodyBytes);
 
   if (request.url === "/api/analyze") {
     const graph = await analyzeRepository(rootDir);
     await saveGraph(graph, graphPath);
     sendJson(response, 200, {
       title: "Repository analyzed",
-      message: `Graph saved to ${graphPath}`,
+      message: "Graph saved to the local .repograph workspace.",
       graph,
       payload: summarizeRepository(graph)
     });
@@ -99,21 +115,21 @@ async function runAction(graph, body) {
     await writeText(contextPath, context);
     return {
       title: "AI context generated",
-      message: `Saved compressed AI context to ${contextPath}`,
+      message: "Saved compressed AI context to the local .repograph workspace.",
       payload: context
     };
   }
 
   if (action === "agent-context") {
     const context = createAgentContext(graph, {
-      query: typeof body.query === "string" ? body.query : "",
+      query: sanitizeText(body.query),
       changedFiles: parseCsv(body.changed),
       limit: 8
     });
     await writeText(agentContextPath, `${JSON.stringify(context, null, 2)}\n`);
     return {
       title: "Agent context generated",
-      message: `Saved structured AI agent context to ${agentContextPath}`,
+      message: "Saved structured AI agent context to the local .repograph workspace.",
       payload: context
     };
   }
@@ -155,13 +171,25 @@ async function getGraph() {
   }
 }
 
-async function readRequestJson(request) {
+async function readRequestJson(request, maxBytes) {
   const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      throw new HttpError(413, "Request body is too large.");
+    }
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
+  if (!raw) {
+    return {};
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, "Request body must be valid JSON.");
+  }
 }
 
 async function writeText(filePath, value) {
@@ -173,7 +201,35 @@ function parseCsv(value) {
   if (typeof value !== "string") {
     return [];
   }
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return value
+    .slice(0, maxTextInputLength)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
+function sanitizeText(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, maxTextInputLength);
+}
+
+function isTrustedOrigin(request) {
+  const origin = request.headers.origin;
+  if (!origin) {
+    return true;
+  }
+  return allowedOrigins.has(origin);
+}
+
+function sanitizePort(value, fallback) {
+  const portNumber = Number(value ?? fallback);
+  if (!Number.isInteger(portNumber) || portNumber < 1024 || portNumber > 65535) {
+    return fallback;
+  }
+  return portNumber;
 }
 
 function sendJson(response, statusCode, value) {
@@ -181,4 +237,11 @@ function sendJson(response, statusCode, value) {
     "Content-Type": "application/json; charset=utf-8"
   });
   response.end(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
 }

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync, statSync } from "node:fs";
+import path from "node:path";
 import {
   analyzeImpact,
   analyzeRepositoryHistory,
@@ -19,6 +21,7 @@ import {
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 10;
+const allowedRoots = parseAllowedRoots(process.env.REPOGRAPH_ALLOWED_ROOTS ?? process.cwd());
 
 const tools = [
   {
@@ -380,7 +383,12 @@ function parseJsonMessage(source) {
 }
 
 function requireRepoPath(args) {
-  return requireString(args.repoPath, "repoPath");
+  const repoPath = requireString(args.repoPath, "repoPath");
+  const resolvedPath = resolveAllowedDirectory(repoPath);
+  if (!resolvedPath) {
+    throw new Error("repoPath must be an existing directory inside an allowed workspace.");
+  }
+  return resolvedPath;
 }
 
 function requireString(value, name) {
@@ -450,4 +458,41 @@ function sendError(id, code, message) {
 function writeMessage(message) {
   const body = JSON.stringify(message);
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
+}
+
+function parseAllowedRoots(value) {
+  return value
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => safeRealpath(entry))
+    .filter(Boolean);
+}
+
+function resolveAllowedDirectory(repoPath) {
+  const realRepoPath = safeRealpath(repoPath);
+  if (!realRepoPath) {
+    return null;
+  }
+  try {
+    if (!statSync(realRepoPath).isDirectory()) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return allowedRoots.some((root) => isPathInside(realRepoPath, root)) ? realRepoPath : null;
+}
+
+function safeRealpath(filePath) {
+  try {
+    return realpathSync(path.resolve(filePath));
+  } catch {
+    return null;
+  }
+}
+
+function isPathInside(candidate, root) {
+  const relativePath = path.relative(root, candidate);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }

@@ -18,6 +18,7 @@ import {
   createGuidanceReport,
   createGraphSnapshot,
   inferOwnership,
+  loadGraph,
   recommendArchitecture,
   semanticSearch,
   simulateRefactor,
@@ -225,6 +226,14 @@ test("bounds repository analysis to avoid oversized scans and files", async () =
   assert.ok(graph.nodes.some((node) => node.id === "file:src/small.ts"));
   assert.ok(!graph.nodes.some((node) => node.id === "file:src/large.ts"));
   await assert.rejects(() => analyzeRepository(repoPath, { maxFiles: 1 }), /max file count/);
+});
+
+test("bounds graph loading to avoid oversized JSON files", async () => {
+  const repoPath = await mkdtemp(path.join(os.tmpdir(), "repograph-graph-load-"));
+  const graphPath = path.join(repoPath, "graph.json");
+  await writeFile(graphPath, `{"nodes":[],"edges":[],"padding":"${"x".repeat(2048)}"}`, "utf8");
+
+  await assert.rejects(() => loadGraph(graphPath, { maxBytes: 1024 }), /maximum size/);
 });
 
 test("extracts exports, methods, and reference metadata", async () => {

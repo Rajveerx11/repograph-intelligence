@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { extractJavaScriptFacts } from "./extractors/javascript.js";
 import { extractPythonFacts } from "./extractors/python.js";
@@ -11,7 +11,7 @@ const PY_EXTENSIONS = new Set([".py"]);
 const DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export async function analyzeRepository(repoPath, options = {}) {
-  const root = path.resolve(repoPath);
+  const root = await resolveRepositoryRoot(repoPath);
   const files = await scanRepository(root, options);
   const facts = [];
   const maxFileBytes = boundedNumber(options.maxFileBytes, DEFAULT_MAX_FILE_BYTES, 1024, 25 * 1024 * 1024);
@@ -33,6 +33,15 @@ export async function analyzeRepository(repoPath, options = {}) {
   }
 
   return buildGraph({ root, files: facts });
+}
+
+async function resolveRepositoryRoot(repoPath) {
+  const root = await realpath(path.resolve(repoPath));
+  const rootStat = await stat(root);
+  if (!rootStat.isDirectory()) {
+    throw new Error("Repository path must point to a directory.");
+  }
+  return root;
 }
 
 function withSemanticText(fileFacts, source) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -30,6 +30,9 @@ import {
 } from "../../core/src/index.js";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_MAX_JSON_BYTES = 25 * 1024 * 1024;
+const GIT_TIMEOUT_MS = 15000;
+const GIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
@@ -745,7 +748,10 @@ async function gitChangedFiles(target, options) {
       "--name-only",
       "--diff-filter=ACMRTUXB",
       range
-    ]);
+    ], {
+      maxBuffer: GIT_MAX_BUFFER_BYTES,
+      timeout: GIT_TIMEOUT_MS
+    });
     return stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   } catch (error) {
     throw new Error(`failed to read git diff for ${range}: ${error.message}`);
@@ -753,7 +759,15 @@ async function gitChangedFiles(target, options) {
 }
 
 async function readJson(filePath) {
-  return JSON.parse(await readFile(path.resolve(filePath), "utf8"));
+  const absolutePath = path.resolve(filePath);
+  const fileStat = await stat(absolutePath);
+  if (!fileStat.isFile()) {
+    throw new Error(`${filePath} must point to a file`);
+  }
+  if (fileStat.size > DEFAULT_MAX_JSON_BYTES) {
+    throw new Error(`${filePath} exceeds maximum JSON size of ${DEFAULT_MAX_JSON_BYTES} bytes`);
+  }
+  return JSON.parse(await readFile(absolutePath, "utf8"));
 }
 
 async function writeJson(filePath, value) {
