@@ -39,58 +39,108 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const visibleGraph = useMemo(() => filterGraph(graph, filter), [graph, filter]);
-  const flowNodes = useMemo(() => toFlowNodes(visibleGraph.nodes), [visibleGraph.nodes]);
+  const flowNodes = useMemo(() => toFlowNodes(visibleGraph.nodes, selected?.id), [visibleGraph.nodes, selected?.id]);
   const flowEdges = useMemo(() => toFlowEdges(visibleGraph.edges), [visibleGraph.edges]);
+  const summary = useMemo(() => summarizeGraph(graph), [graph]);
 
   return (
-    <main className="h-screen bg-substrate text-graphite">
-      <header className="flex h-14 items-center justify-between border-b border-stone-300 bg-white px-4">
-        <div>
-          <h1 className="text-base font-semibold">RepoGraph Intelligence</h1>
-          <p className="text-xs text-stone-500">{graph.nodes.length} nodes / {graph.edges.length} edges</p>
+    <main className="app-shell h-screen overflow-hidden bg-substrate text-graphite">
+      <header className="workspace-header">
+        <div className="brand-lockup">
+          <div className="brand-mark" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div>
+            <h1>RepoGraph Intelligence</h1>
+            <p>{graph.root === "sample" ? "Sample workspace" : graph.root}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="h-9 rounded border border-stone-300 bg-white px-2 text-sm"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value as typeof filter)}
-          >
-            <option value="all">All nodes</option>
-            <option value="files">Files only</option>
-            <option value="packages">Packages only</option>
-          </select>
-          <label className="inline-flex h-9 cursor-pointer items-center rounded border border-stone-300 bg-white px-3 text-sm">
-            Load graph
+
+        <div className="header-metrics" aria-label="Graph summary">
+          <Metric label="Nodes" value={graph.nodes.length} />
+          <Metric label="Edges" value={graph.edges.length} />
+          <Metric label="Files" value={summary.files} />
+          <Metric label="Packages" value={summary.packages} />
+        </div>
+
+        <div className="header-actions">
+          <div className="segmented-control" aria-label="Node filter">
+            {[
+              ["all", "All"],
+              ["files", "Files"],
+              ["packages", "Packages"]
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={filter === value ? "active" : ""}
+                type="button"
+                onClick={() => setFilter(value as typeof filter)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="load-button">
+            <UploadIcon />
+            <span>Load graph</span>
             <input className="sr-only" type="file" accept="application/json" onChange={(event) => loadGraphFile(event, setGraph, setLoadError)} />
           </label>
         </div>
       </header>
-      <section className="grid h-[calc(100vh-3.5rem)] grid-cols-[1fr_320px]">
-        <ReactFlow
-          nodes={flowNodes}
-          edges={flowEdges}
-          fitView
-          onNodeClick={(_, node) => setSelected(graph.nodes.find((item) => item.id === node.id) ?? null)}
-        >
-          <Background />
-          <Controls />
-          <MiniMap pannable zoomable />
-        </ReactFlow>
-        <aside className="border-l border-stone-300 bg-white p-4">
-          <h2 className="text-sm font-semibold">Inspector</h2>
+
+      <section className="workspace-grid">
+        <div className="graph-stage">
           {loadError ? (
-            <p className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">{loadError}</p>
+            <p className="load-error">{loadError}</p>
           ) : null}
+          <ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            fitView
+            minZoom={0.18}
+            maxZoom={1.6}
+            onPaneClick={() => setSelected(null)}
+            onNodeClick={(_, node) => setSelected(graph.nodes.find((item) => item.id === node.id) ?? null)}
+          >
+            <Background color="#cbd5e1" gap={22} size={1} />
+            <Controls />
+            <MiniMap pannable zoomable nodeStrokeWidth={3} />
+          </ReactFlow>
+        </div>
+
+        <aside className="inspector-panel">
+          <div className="panel-heading">
+            <p>Inspector</p>
+            <span>{visibleGraph.nodes.length} visible</span>
+          </div>
           {selected ? (
-            <dl className="mt-4 space-y-3 text-sm">
-              <Field label="Type" value={selected.type} />
-              <Field label="Label" value={selected.label} />
-              <Field label="Path" value={selected.path ?? "none"} />
-              <Field label="Language" value={selected.language ?? "none"} />
-              <Field label="Symbols" value={String(selected.symbolCount ?? 0)} />
-            </dl>
+            <>
+              <div className="selection-card">
+                <span className={`node-badge ${selected.type}`}>{selected.type}</span>
+                <h2>{selected.label}</h2>
+                <p>{selected.path ?? selected.id}</p>
+              </div>
+              <dl className="field-grid">
+                <Field label="Path" value={selected.path ?? "none"} />
+                <Field label="Language" value={selected.language ?? "none"} />
+                <Field label="Symbols" value={String(selected.symbolCount ?? 0)} />
+                <Field label="Imports" value={String(selected.importCount ?? 0)} />
+                <Field label="Exports" value={String(selected.exportCount ?? 0)} />
+                <Field label="References" value={String(selected.referenceCount ?? 0)} />
+              </dl>
+            </>
           ) : (
-            <p className="mt-4 text-sm text-stone-500">Select a node to inspect its structural metadata.</p>
+            <div className="empty-state">
+              <div className="empty-glyph" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <h2>No node selected</h2>
+              <p>Choose a graph node to inspect its structural metadata.</p>
+            </div>
           )}
         </aside>
       </section>
@@ -101,9 +151,42 @@ function App() {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-stone-500">{label}</dt>
-      <dd className="break-words font-mono text-xs">{value}</dd>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value.toLocaleString()}</dd>
+    </div>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M10 3v9m0-9 3.5 3.5M10 3 6.5 6.5" />
+      <path d="M4 12.5V15a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2.5" />
+    </svg>
+  );
+}
+
+function summarizeGraph(graph: RepoGraph) {
+  return graph.nodes.reduce(
+    (summary, node) => {
+      if (node.type === "file") {
+        summary.files += 1;
+      }
+      if (node.type === "package") {
+        summary.packages += 1;
+      }
+      return summary;
+    },
+    { files: 0, packages: 0 }
   );
 }
 
@@ -121,7 +204,7 @@ function filterGraph(graph: RepoGraph, filter: "all" | "files" | "packages"): Re
   };
 }
 
-function toFlowNodes(nodes: RepoGraphNode[]): Node[] {
+function toFlowNodes(nodes: RepoGraphNode[], selectedId?: string): Node[] {
   return nodes.map((node, index) => ({
     id: node.id,
     type: "default",
@@ -132,7 +215,11 @@ function toFlowNodes(nodes: RepoGraphNode[]): Node[] {
     data: {
       label: node.path ?? node.label
     },
-    className: node.type === "package" ? "package-node" : "file-node"
+    className: [
+      "graph-node",
+      `${node.type}-node`,
+      node.id === selectedId ? "selected-node" : ""
+    ].filter(Boolean).join(" ")
   }));
 }
 
