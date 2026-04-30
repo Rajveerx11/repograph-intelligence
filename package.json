@@ -14,7 +14,7 @@
   "scripts": {
     "repograph": "node ./packages/cli/src/index.js",
     "mcp": "node ./packages/mcp/src/server.js",
-    "web": "npm --workspace @repograph/web run dev",
+    "web": "node ./apps/web/server.js",
     "web:build": "npm --workspace @repograph/web run build",
     "test": "node --test \"test/*.test.js\"",
     "check": "node --check ./packages/cli/src/index.js && node --check ./packages/mcp/src/server.js",

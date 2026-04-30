@@ -246,6 +246,134 @@ body {
   font-weight: 640;
 }
 
+.action-console {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.76);
+}
+
+.action-inputs {
+  display: grid;
+  gap: 10px;
+}
+
+.action-inputs label {
+  display: grid;
+  gap: 6px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.action-inputs input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 560;
+  outline: none;
+}
+
+.action-inputs input:focus {
+  border-color: rgba(37, 99, 235, 0.58);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.action-grid button {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+  text-align: left;
+}
+
+.action-grid button:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.38);
+  color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.action-grid button.primary {
+  border-color: rgba(29, 78, 216, 0.38);
+  background: #1d4ed8;
+  color: #ffffff;
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+.action-grid button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.action-error {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.action-result {
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.action-result h2 {
+  margin: 0;
+  padding: 12px 12px 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.action-result p {
+  margin: 6px 0 0;
+  padding: 0 12px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.action-result pre {
+  overflow: auto;
+  max-height: 280px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  background: #0f172a;
+  color: #dbeafe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .selection-card {
   padding: 16px;
   border: 1px solid rgba(148, 163, 184, 0.28);
