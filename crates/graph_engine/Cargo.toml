@@ -1,0 +1,11 @@
+[package]
+name = "repograph_graph_engine"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+repograph_shared_types = { path = "../shared_types" }
+serde_json.workspace = true
+

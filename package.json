@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "AI-native structural intelligence engine for software repositories.",
   "type": "module",
+  "workspaces": [
+    "apps/web",
+    "packages/shared-types"
+  ],
   "bin": {
     "repograph": "./packages/cli/src/index.js",
     "repograph-mcp": "./packages/mcp/src/server.js"
@@ -10,6 +14,8 @@
   "scripts": {
     "repograph": "node ./packages/cli/src/index.js",
     "mcp": "node ./packages/mcp/src/server.js",
+    "web": "npm --workspace @repograph/web run dev",
+    "web:build": "npm --workspace @repograph/web run build",
     "test": "node --test \"test/*.test.js\"",
     "check": "node --check ./packages/cli/src/index.js && node --check ./packages/mcp/src/server.js",
     "audit": "npm audit --omit=dev"

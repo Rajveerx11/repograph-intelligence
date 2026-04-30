@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+.react-flow__node {
+  border: 1px solid #d6d3d1;
+  border-radius: 6px;
+  color: #1f2937;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  min-width: 150px;
+}
+
+.file-node {
+  background: #ffffff;
+}
+
+.package-node {
+  background: #eef2ff;
+  border-color: #93c5fd;
+}
+
+.react-flow__edge-path {
+  stroke: #64748b;
+}
+
+.react-flow__edge-text {
+  font-size: 10px;
+}
+

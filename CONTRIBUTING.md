@@ -7,10 +7,12 @@ Thanks for your interest in contributing. RepoGraph Intelligence is early, inten
 High-value contribution areas:
 
 - Parser support for more language constructs
-- Tree-sitter-backed extraction experiments
+- Tree-sitter-backed extraction in the Rust parser engine
 - Graph algorithms for coupling, cycles, ownership, and impact analysis
 - Architecture rules and recommendation quality
 - MCP tool ergonomics
+- React Flow graph explorer workflows
+- Rust storage and traversal hardening
 - CLI output formats for CI and pull request workflows
 - Test fixtures that model real repository shapes
 - Documentation, examples, and graph schema notes
@@ -22,12 +24,14 @@ Requirements:
 - Node.js 20 or newer
 - npm
 - Git
+- Rust toolchain (`cargo`, `rustc`) for Rust core changes
 
 Install and verify:
 
 ```bash
 npm test
 npm run check
+npm run web:build
 ```
 
 Run the CLI locally:
@@ -42,9 +46,15 @@ Before opening a pull request:
 
 1. Keep the change focused on one behavior or capability.
 2. Add or update tests for graph behavior, CLI behavior, or intelligence outputs.
-3. Run `npm run check` and `npm test`.
+3. Run `npm run check`, `npm test`, and `npm run web:build`.
 4. Update `README.md` or docs when user-facing behavior changes.
 5. Describe the repository behavior being modeled and any tradeoffs in the implementation.
+
+For Rust core changes, also run:
+
+```bash
+cargo test --workspace
+```
 
 ## Code Style
 

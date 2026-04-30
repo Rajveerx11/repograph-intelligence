@@ -1,0 +1,13 @@
+[package]
+name = "repograph_storage_engine"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+repograph_shared_types = { path = "../shared_types" }
+rusqlite.workspace = true
+serde_json.workspace = true
+

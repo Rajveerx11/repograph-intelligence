@@ -28,7 +28,7 @@ const STOP_WORDS = new Set([
 export function createSemanticText(fileFacts, source) {
   const comments = extractComments(source, fileFacts.language);
   const importText = fileFacts.imports
-    .map((item) => [item.specifier, ...(item.importedNames ?? [])].join(" "))
+    .map((item) => item.specifier)
     .join(" ");
   const symbolText = fileFacts.symbols
     .map((symbol) => `${symbol.kind} ${symbol.name}`)
@@ -187,4 +187,3 @@ function topMatchedTerms(queryTokens, documentTokens) {
   const documentSet = new Set(documentTokens);
   return Array.from(new Set(queryTokens.filter((token) => documentSet.has(token)))).slice(0, 5);
 }
-

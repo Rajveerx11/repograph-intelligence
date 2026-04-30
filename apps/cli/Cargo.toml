@@ -1,0 +1,15 @@
+[package]
+name = "repograph"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+repograph_graph_engine = { path = "../../crates/graph_engine" }
+repograph_parser_engine = { path = "../../crates/parser_engine" }
+repograph_shared_types = { path = "../../crates/shared_types" }
+repograph_storage_engine = { path = "../../crates/storage_engine" }
+serde_json.workspace = true

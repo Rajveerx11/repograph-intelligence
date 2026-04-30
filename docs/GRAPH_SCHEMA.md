@@ -27,6 +27,7 @@ Top-level fields:
 | `file` | `id`, `type`, `label`, `path`, `language` | Source file discovered by the scanner. |
 | `function` | `id`, `type`, `label`, `path`, `language` | Function or method-like symbol. |
 | `class` | `id`, `type`, `label`, `path`, `language` | Class symbol. |
+| `method` | `id`, `type`, `label`, `path`, `language` | Method symbol extracted from a class/object body. |
 | `interface` | `id`, `type`, `label`, `path`, `language` | TypeScript interface symbol. |
 | `package` | `id`, `type`, `label` | External package dependency. |
 
@@ -35,6 +36,9 @@ File nodes may also include:
 - `lineCount`
 - `semanticText`
 - `symbolCount`
+- `importCount`
+- `exportCount`
+- `referenceCount`
 
 ## Edge Types
 
@@ -42,6 +46,7 @@ File nodes may also include:
 | --- | --- | --- |
 | `contains` | `id`, `type`, `from`, `to` | A file contains a symbol. |
 | `imports` | `id`, `type`, `from`, `to`, `scope` | A file imports another internal file. |
+| `exports` | `id`, `type`, `from`, `to` | A file exports a local symbol. |
 | `dependency` | `id`, `type`, `from`, `to`, `scope` | A file depends on an external package. |
 
 Dependency edges include:

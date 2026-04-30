@@ -227,6 +227,24 @@ test("bounds repository analysis to avoid oversized scans and files", async () =
   await assert.rejects(() => analyzeRepository(repoPath, { maxFiles: 1 }), /max file count/);
 });
 
+test("extracts exports, methods, and reference metadata", async () => {
+  const repoPath = await mkdtemp(path.join(os.tmpdir(), "repograph-phase1-"));
+  await mkdir(path.join(repoPath, "src"));
+  await writeFile(
+    path.join(repoPath, "src", "service.ts"),
+    `export interface Port {}\nexport class Service {\n  run() {\n    return this.run;\n  }\n}\n`,
+    "utf8"
+  );
+
+  const graph = await analyzeRepository(repoPath);
+  const fileNode = graph.nodes.find((node) => node.id === "file:src/service.ts");
+
+  assert.equal(fileNode.exportCount, 2);
+  assert.ok(fileNode.referenceCount >= 2);
+  assert.ok(graph.nodes.some((node) => node.id === "symbol:src/service.ts:run" && node.type === "method"));
+  assert.ok(graph.edges.some((edge) => edge.type === "exports" && edge.exportedName === "Service"));
+});
+
 test("MCP server handles malformed input without dropping subsequent requests", async () => {
   const output = await runMcpProbe([
     "{bad json}\n",

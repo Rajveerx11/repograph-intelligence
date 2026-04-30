@@ -6,11 +6,15 @@ const SYMBOL_PATTERNS = [
 ];
 
 export function extractPythonFacts(file, source) {
+  const symbols = extractSymbols(source);
+
   return {
     ...file,
     language: "python",
     imports: extractImports(source),
-    symbols: extractSymbols(source)
+    exports: extractExports(symbols),
+    references: extractReferences(source, symbols),
+    symbols
   };
 }
 
@@ -57,16 +61,42 @@ function extractSymbols(source) {
   for (const { kind, pattern } of SYMBOL_PATTERNS) {
     for (const match of source.matchAll(pattern)) {
       const name = match[1];
-      const key = `${kind}:${name}`;
+      const column = leadingWhitespace(match[0]) + 1;
+      const symbolKind = kind === "function" && column > 1 ? "method" : kind;
+      const key = `${symbolKind}:${name}`;
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
-      symbols.push({ kind, name });
+      symbols.push({ kind: symbolKind, name, column });
     }
   }
 
   return symbols;
+}
+
+function extractExports(symbols) {
+  return symbols
+    .filter((symbol) => (symbol.column ?? 1) === 1)
+    .map((symbol) => ({ name: symbol.name }));
+}
+
+function extractReferences(source, symbols) {
+  const symbolNames = new Set(symbols.map((symbol) => symbol.name));
+  const references = [];
+  const identifierPattern = /\b[A-Za-z_]\w*\b/g;
+
+  for (const match of source.matchAll(identifierPattern)) {
+    if (symbolNames.has(match[0])) {
+      references.push({ name: match[0] });
+    }
+  }
+
+  return references;
+}
+
+function leadingWhitespace(value) {
+  return value.match(/^\s*/)?.[0].length ?? 0;
 }
 
 function dedupeImports(imports) {
@@ -80,4 +110,3 @@ function dedupeImports(imports) {
     return true;
   });
 }
-

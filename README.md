@@ -10,7 +10,12 @@ The goal is not to be another autocomplete tool or chat wrapper. RepoGraph focus
 
 This project is in active early development.
 
-The current implementation is a dependency-light Node.js baseline that validates the product model and CLI contracts. The long-term core engine is expected to move toward Rust, Tree-sitter, SQLite/DuckDB, and a richer graph storage layer as the system matures.
+The repository now contains two implementation tracks:
+
+- A verified Node.js baseline that powers the current CLI, MCP server, intelligence APIs, and tests.
+- A Rust Phase 1 core workspace that introduces the production architecture target: Tree-sitter parsing, typed graph construction, SQLite storage, and a modular CLI.
+
+The Node implementation remains the stable runtime surface while the Rust core matures behind the same product contracts.
 
 ## What It Does Today
 
@@ -37,12 +42,14 @@ The current implementation is a dependency-light Node.js baseline that validates
 - Creates stable graph snapshots for baselines and CI
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
+- Provides a React Flow graph explorer for loading and inspecting graph JSON
+- Includes a Rust Phase 1 core workspace for parser, graph, storage, metrics, and CLI foundations
 
 ## Phase Coverage
 
 | PRD phase | Status | Current capability |
 | --- | --- | --- |
-| Phase 1: Repository Structural Engine | In progress | Parser, graph generation, metrics, JSON persistence, CLI |
+| Phase 1: Repository Structural Engine | In progress | Parser, graph generation, metrics, JSON/SQLite persistence, CLI, React Flow explorer, Rust core scaffold |
 | Phase 2: Semantic Intelligence Layer | In progress | Local semantic search, architecture summaries, context compression |
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
 | Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
@@ -56,6 +63,7 @@ Requirements:
 - Node.js 20 or newer
 - npm
 - Git
+- Rust toolchain for the new Rust core workspace (`cargo`, `rustc`)
 
 Clone and run:
 
@@ -63,6 +71,12 @@ Clone and run:
 git clone https://github.com/Rajveerx11/repograph-intelligence.git
 cd repograph-intelligence
 npm test
+```
+
+Build the graph explorer UI:
+
+```bash
+npm run web:build
 ```
 
 Analyze the current repository:
@@ -205,6 +219,13 @@ Start the MCP server:
 npm run mcp
 ```
 
+Run the Rust Phase 1 core when a Rust toolchain is installed:
+
+```bash
+cargo run -p repograph -- analyze ./repo
+cargo run -p repograph -- stats ./repo
+```
+
 Every intelligence command supports JSON output where useful:
 
 ```bash
@@ -270,7 +291,19 @@ The MCP server is intentionally local-first. It analyzes source on demand and do
 ## Project Layout
 
 ```text
+apps/
+  cli/
+    src/main.rs             Rust Phase 1 CLI entrypoint
+  web/
+    src/main.tsx            React Flow graph explorer
+crates/
+  shared_types/             Rust graph, parser, node, edge, and metric contracts
+  parser_engine/            Tree-sitter-backed repository parser
+  graph_engine/             Directed graph construction and structural metrics
+  storage_engine/           SQLite graph store abstraction
 packages/
+  shared-types/
+    src/index.ts            TypeScript graph contracts for UI/integrations
   cli/
     src/index.js            CLI entrypoint
   mcp/
@@ -299,6 +332,7 @@ test/
 docs/
   PRD.md                    Product requirements document
   GRAPH_SCHEMA.md           Current graph and snapshot schema notes
+  RUST_CORE.md              Rust Phase 1 architecture and verification notes
 ```
 
 ## Development
@@ -321,31 +355,41 @@ Run dependency audit:
 npm run audit
 ```
 
+Build the graph explorer:
+
+```bash
+npm run web:build
+```
+
 Run the CLI locally:
 
 ```bash
 npm run repograph -- help
 ```
 
-The project intentionally avoids heavy runtime dependencies at this stage. That keeps the architecture easy to inspect while the graph model, CLI behavior, and intelligence APIs stabilize.
+When a Rust toolchain is installed, validate the Rust core with:
+
+```bash
+cargo test --workspace
+```
+
+The verified Node runtime intentionally stays small and inspectable while the Rust graph engine matures into the production core.
 
 ## Roadmap
 
 Near-term priorities:
 
-- Replace regex-based extraction with Tree-sitter parsers
-- Persist graph indexes in SQLite
 - Add richer symbol-level references and call edges
-- Add visualization using React Flow
 - Expand MCP tools for symbol-level references and saved graph resources
+- Compile and harden the Rust core in CI once Rust tooling is available in the build environment
 - Improve historical drift scoring and ownership confidence
 - Add dependency manifest parsing for package-version security context
 
 Longer-term priorities:
 
-- Rust core engine
 - Incremental repository indexing
 - Deeper multi-repository service intelligence
+- Tauri desktop packaging around the web explorer and Rust core
 
 ## Design Principles
 

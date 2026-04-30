@@ -117,6 +117,5 @@ function labelForNode(nodeId) {
 }
 
 function isSymbolType(type) {
-  return type === "class" || type === "function" || type === "interface";
+  return type === "class" || type === "function" || type === "interface" || type === "method";
 }
-

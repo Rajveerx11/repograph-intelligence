@@ -18,6 +18,8 @@ Unlike traditional AI coding tools that primarily focus on autocomplete, code ge
 
 The platform converts repositories into live semantic graphs that can be analyzed, queried, visualized, and reasoned about.
 
+Current repository status: the project includes a verified Node.js baseline for the CLI, MCP server, graph intelligence APIs, and tests; a Rust Phase 1 workspace for Tree-sitter parsing, typed graph construction, SQLite storage, metrics, and CLI foundations; and a React Flow graph explorer for visual inspection.
+
 The long-term goal is to become the foundational context and structural intelligence layer for AI-native software development.
 
 ## 2. Problem Statement
@@ -539,4 +541,3 @@ RepoGraph Intelligence should evolve into the system intelligence layer for repo
 ## 19. Final One-Sentence Description
 
 RepoGraph Intelligence is an AI-native structural intelligence engine that helps developers and AI systems understand how large software repositories actually behave.
-

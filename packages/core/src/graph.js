@@ -24,7 +24,10 @@ export function buildGraph({ root, files }) {
       language: file.language,
       lineCount: file.lineCount,
       semanticText: file.semanticText,
-      symbolCount: file.symbols.length
+      symbolCount: file.symbols.length,
+      importCount: file.imports.length,
+      exportCount: file.exports?.length ?? 0,
+      referenceCount: file.references?.length ?? 0
     });
 
     for (const symbol of file.symbols) {
@@ -44,6 +47,8 @@ export function buildGraph({ root, files }) {
       });
     }
   }
+
+  const existingNodeIds = new Set(graph.nodes.map((node) => node.id));
 
   for (const file of files) {
     for (const importFact of file.imports) {
@@ -79,6 +84,23 @@ export function buildGraph({ root, files }) {
         to: packageId,
         specifier: importFact.specifier,
         scope: "external"
+      });
+    }
+
+    for (const exportFact of file.exports ?? []) {
+      const from = fileNodeId(file.relativePath);
+      const to = symbolNodeId(file.relativePath, exportFact.name);
+
+      if (!existingNodeIds.has(to)) {
+        continue;
+      }
+
+      graph.edges.push({
+        id: edgeId("exports", from, to, exportFact.name),
+        type: "exports",
+        from,
+        to,
+        exportedName: exportFact.name
       });
     }
   }

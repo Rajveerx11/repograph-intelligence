@@ -1,0 +1,17 @@
+[package]
+name = "repograph_parser_engine"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+regex.workspace = true
+repograph_shared_types = { path = "../shared_types" }
+tree-sitter.workspace = true
+tree-sitter-javascript.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-typescript.workspace = true
+walkdir.workspace = true
+
