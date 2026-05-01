@@ -1,5 +1,9 @@
 # RepoGraph Intelligence
 
+[![CI](https://github.com/Rajveerx11/repograph-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/Rajveerx11/repograph-intelligence/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+
 RepoGraph Intelligence is an AI-native structural intelligence engine for software repositories.
 
 It analyzes a codebase as a dependency graph, enriches that graph with semantic signals, and exposes repository intelligence through a CLI and MCP server that can answer questions about structure, search, architecture, and change impact.
