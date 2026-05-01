@@ -6,12 +6,15 @@ Thanks for your interest in contributing. RepoGraph Intelligence is early, inten
 
 High-value contribution areas:
 
-- Parser support for more language constructs
-- Tree-sitter-backed extraction in the Rust parser engine
+- Parser support for more language constructs (decorators, namespace imports, generics, dynamic imports)
+- Tree-sitter-backed extraction in the Rust parser engine, plus moving the JS pipeline onto a real AST when regex-plus-masker saturates
+- Hardening the source masker against tricky template-literal nesting and JSX edge cases
 - Graph algorithms for coupling, cycles, ownership, and impact analysis
 - Architecture rules and recommendation quality
-- MCP tool ergonomics
-- React Flow graph explorer workflows
+- Supply-chain auditing: more manifest formats (Gemfile, go.mod, pnpm/yarn lockfiles), advisory caching, license-policy rules
+- Watch mode: incremental graph mutation instead of full rebuilds, smarter ignore globs, large-monorepo benchmarks
+- Web explorer: SSE reconnection UX, graph diff overlays, keyboard navigation
+- MCP tool ergonomics, including new tools for watch state and supply-chain
 - Rust storage and traversal hardening
 - CLI output formats for CI and pull request workflows
 - Test fixtures that model real repository shapes
@@ -40,15 +43,35 @@ Run the CLI locally:
 npm run repograph -- help
 ```
 
+Run the dependency audit and a one-shot supply-chain scan:
+
+```bash
+npm run audit
+npm run repograph -- supply-chain .
+```
+
+Try live watch mode end-to-end:
+
+```bash
+npm run repograph -- watch . --debounce 250
+```
+
+Bring up the explorer with the SSE live indicator (the server starts the watcher automatically; set `REPOGRAPH_WATCH=0` to disable):
+
+```bash
+npm run web
+```
+
 ## Pull Request Guidelines
 
 Before opening a pull request:
 
 1. Keep the change focused on one behavior or capability.
-2. Add or update tests for graph behavior, CLI behavior, or intelligence outputs.
-3. Run `npm run check`, `npm test`, and `npm run web:build`.
-4. Update `README.md` or docs when user-facing behavior changes.
-5. Describe the repository behavior being modeled and any tradeoffs in the implementation.
+2. Add or update tests in `test/core.test.js` or `test/features.test.js` for graph behavior, CLI behavior, supply-chain output, watch lifecycle, or extractor accuracy.
+3. Run `npm run check`, `npm test`, and `npm run web:build`. Tests must stay green; the existing 24 cases are the floor.
+4. When adding a network-touching feature (such as OSV advisories), expose an injectable `fetch` so tests can assert behavior offline.
+5. Update `README.md`, `CONTRIBUTING.md`, or files under `docs/` when user-facing behavior changes.
+6. Describe the repository behavior being modeled and any tradeoffs in the implementation.
 
 For Rust core changes, also run:
 
@@ -60,9 +83,11 @@ cargo test --workspace
 
 - Prefer small modules with explicit exports.
 - Keep analysis outputs structured and machine-readable where possible.
-- Preserve local-first behavior; do not require cloud credentials for core features.
+- Preserve local-first behavior; do not require cloud credentials for core features. Network calls must be opt-in (see `--online` for supply-chain) and must degrade gracefully when offline.
 - Favor deterministic heuristics before introducing model-backed behavior.
 - Avoid broad refactors unless they are required for the feature.
+- Use `execFile` with array arguments for any subprocess call. Validate user-supplied refs/paths with explicit allowlists before passing them to child processes, and append `--` to terminate option parsing wherever positional arguments may be user-controlled.
+- For file I/O on user-controlled paths, prefer a single `fs.open` handle for stat-then-read so there is no TOCTOU window.
 
 ## Reporting Issues
 
@@ -76,9 +101,11 @@ When opening an issue, include:
 
 ## Security
 
-RepoGraph currently performs local static analysis and does not claim to detect known vulnerable package versions. Security-related features focus on architecture risk, sensitive blast zones, dependency exposure, and coupling patterns.
+RepoGraph performs local static analysis. Architecture-focused security features highlight sensitive blast zones, wide dependency surfaces, cycles, and coupling patterns. The supply-chain audit additionally parses dependency manifests, classifies licenses, and (with `--online`) cross-checks OSV.dev for known advisories.
 
-If you discover a security issue in RepoGraph itself, please open a private report through GitHub security advisories if available, or contact the maintainers before public disclosure.
+The local web server is hardened against CORS bypass and DNS rebinding through a Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation. The CLI hardens git-backed commands by validating user-supplied refs and terminating option parsing with `--`. File reads bound size and use a single open handle to eliminate TOCTOU windows.
+
+If you discover a security issue in RepoGraph itself, please open a private report through GitHub security advisories if available, or contact the maintainers before public disclosure. Do not open a public issue with reproduction details for an unfixed vulnerability.
 
 ## License
 
