@@ -20,7 +20,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 ## What It Does Today
 
 - Recursively scans JavaScript, TypeScript, and Python repositories
-- Extracts imports, exports, functions, classes, interfaces, and Python definitions
+- Extracts imports, exports, functions, classes, interfaces, default exports, and Python definitions through a comment- and string-aware source masker that suppresses false positives inside strings, regex, template-literal text, and JSDoc blocks
 - Builds a normalized file, symbol, package, and dependency graph
 - Calculates structural metrics such as density, cycles, hotspots, coupling, and orphan files
 - Performs local semantic search over paths, symbols, imports, comments, and identifiers
@@ -29,7 +29,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Estimates blast radius for changed files
 - Scores dependency risk across the repository
 - Simulates refactor/change-set impact
-- Analyzes changed files from a Git diff
+- Analyzes changed files from a Git diff with hardened ref validation that rejects refs starting with `-`, whitespace, or control characters and terminates option parsing with `--`
 - Produces structured AI agent context snapshots
 - Emits structural guidance warnings for risky files and boundaries
 - Runs as a local MCP stdio server for AI assistants
@@ -38,11 +38,14 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Infers file and module ownership from contribution history
 - Identifies security-sensitive architecture risk and critical blast zones
 - Generates architecture recommendations for decoupling, stabilization, and boundary cleanup
+- Audits dependency manifests across npm, Cargo, `requirements.txt`, and `pyproject.toml` with license classification (permissive, copyleft, proprietary) and optional OSV.dev advisory lookups
 - Validates graph schema integrity and missing references
 - Creates stable graph snapshots for baselines and CI
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
-- Provides a React Flow graph explorer for loading and inspecting graph JSON
+- Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
+- Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds
+- Hardens the local web server against CORS bypass and DNS rebinding via Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation
 - Includes a Rust Phase 1 core workspace for parser, graph, storage, metrics, and CLI foundations
 
 ## Phase Coverage
@@ -53,8 +56,8 @@ The Node implementation remains the stable runtime surface while the Rust core m
 | Phase 2: Semantic Intelligence Layer | In progress | Local semantic search, architecture summaries, context compression |
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
 | Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
-| Phase 5: Enterprise and Advanced Intelligence | In progress | History, ownership, security architecture risk, recommendations |
-| Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline comparison, CI reports |
+| Phase 5: Enterprise and Advanced Intelligence | In progress | History, ownership, security architecture risk, supply-chain audit with OSV advisories, recommendations |
+| Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline comparison, live watch with SSE, CI reports |
 
 ## Quick Start
 
@@ -213,6 +216,23 @@ Generate a CI report:
 npm run repograph -- ci ./repo --baseline .repograph/snapshot.json --fail-on high --out .repograph/ci-report.json
 ```
 
+Audit dependency manifests, licenses, and (optionally) OSV advisories:
+
+```bash
+npm run repograph -- supply-chain ./repo
+npm run repograph -- supply-chain ./repo --online --json --out .repograph/supply-chain.json
+```
+
+The `--online` flag queries the public OSV.dev `v1/querybatch` endpoint for known vulnerabilities. Without it the audit stays fully offline and only reports license risk and unpinned versions.
+
+Watch a repository and rebuild the graph on every file change:
+
+```bash
+npm run repograph -- watch ./repo --debounce 250 --out .repograph/graph.json
+```
+
+The watcher collapses bursts of file changes inside a debounce window, emits structured events for tooling, and writes the latest graph back to disk. Press `Ctrl+C` to stop.
+
 Start the MCP server:
 
 ```bash
@@ -254,6 +274,8 @@ On top of that graph, RepoGraph derives intelligence:
 - Ownership intelligence maps files and modules to likely maintainers from contribution history
 - Security intelligence highlights sensitive paths, wide external dependency surfaces, cycles, and critical blast zones
 - Recommendation generation turns structural signals into prioritized architecture actions
+- Supply-chain auditing parses dependency manifests, classifies licenses, flags unpinned versions, and (optionally) cross-checks OSV.dev for advisories
+- Live watch mode rebuilds the graph incrementally on file changes and pushes updates to the explorer over Server-Sent Events
 - Graph validation checks schema integrity, duplicate ids, duplicate paths, and missing edge endpoints
 - Snapshots create stable fingerprints for baseline comparison
 - CI reports combine validation, security findings, recommendations, and baseline drift into pass/fail output
@@ -280,6 +302,7 @@ The server exposes these tools:
 | `repograph_history` | Analyze repository evolution from Git history |
 | `repograph_ownership` | Infer file and module ownership |
 | `repograph_security` | Identify security-sensitive architecture risk |
+| `repograph_supply_chain` | Audit dependency manifests, license risk, and optional OSV advisories |
 | `repograph_recommend` | Generate architecture improvement recommendations |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
@@ -312,6 +335,10 @@ packages/
     src/
       agent.js              AI context and guidance APIs
       architecture.js       Architecture inference
+      extractors/
+        javascript.js       JS/TS symbol, import, export, reference extraction
+        python.js           Python module and definition extraction
+        source-masker.js    Comment- and string-aware source masker for accurate extraction
       graph.js              Normalized graph builder
       history.js            Historical churn and evolution analysis
       impact.js             Phase 3 impact intelligence
@@ -319,15 +346,18 @@ packages/
       ownership.js          Ownership inference from history
       operations.js         Validation, snapshots, comparison, CI reports
       recommendations.js    Architecture recommendations
-      repository.js         Repository analysis orchestration
+      repository.js         Repository analysis orchestration with atomic file reads
       scanner.js            Recursive source scanner
       semantic.js           Local semantic index/search
       security.js           Security architecture risk analysis
       storage.js            Graph persistence
       summaries.js          Repository summaries and context compression
+      supply-chain.js       Manifest parsing, license classification, OSV advisory lookups
+      watch.js              Recursive watcher with debounced incremental graph rebuilds
       workspace.js          Multi-repository workspace summaries
 test/
   core.test.js              Core behavior tests
+  features.test.js          Tests for the source masker, supply-chain audit, and watch lifecycle
   fixtures/                 Small multi-language fixture repository
 docs/
   PRD.md                    Product requirements document
@@ -383,11 +413,12 @@ Near-term priorities:
 - Expand MCP tools for symbol-level references and saved graph resources
 - Compile and harden the Rust core in CI once Rust tooling is available in the build environment
 - Improve historical drift scoring and ownership confidence
-- Add dependency manifest parsing for package-version security context
+- Cache OSV advisory responses on disk so repeated supply-chain audits stay quick offline
+- Move JS/TS extraction onto a real AST (acorn or tree-sitter) once the regex-plus-masker pipeline saturates
 
 Longer-term priorities:
 
-- Incremental repository indexing
+- True incremental indexing where the watcher mutates the graph in place instead of rebuilding from scratch
 - Deeper multi-repository service intelligence
 - Tauri desktop packaging around the web explorer and Rust core
 
@@ -414,4 +445,4 @@ For larger changes, please include a short explanation of the repository behavio
 
 ## License
 
-MIT. See [LICENSE.md](LICENSE.md).
+MIT. See [LICENSE](LICENSE).
