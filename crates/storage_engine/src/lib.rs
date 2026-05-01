@@ -132,18 +132,20 @@ impl GraphStore for SqliteGraphStore {
         let mut statement = self.connection.prepare(
             "SELECT id, kind, from_id, to_id, scope, metadata FROM edges WHERE from_id = ?1 ORDER BY id",
         )?;
-        Ok(statement
+        let edges = statement
             .query_map(params![node_id], row_to_edge)?
-            .collect::<std::result::Result<Vec<_>, _>>()?)
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(edges)
     }
 
     fn incoming_edges(&self, node_id: &str) -> Result<Vec<GraphEdge>> {
         let mut statement = self.connection.prepare(
             "SELECT id, kind, from_id, to_id, scope, metadata FROM edges WHERE to_id = ?1 ORDER BY id",
         )?;
-        Ok(statement
+        let edges = statement
             .query_map(params![node_id], row_to_edge)?
-            .collect::<std::result::Result<Vec<_>, _>>()?)
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(edges)
     }
 }
 

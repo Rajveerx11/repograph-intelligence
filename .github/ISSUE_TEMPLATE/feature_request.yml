@@ -1,0 +1,59 @@
+name: Feature Request
+description: Propose a new capability or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an enhancement. RepoGraph values focused, well-motivated additions that fit the project's local-first, explainable design.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use Case
+      description: What problem are you trying to solve? What does the current behavior fail to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe what you'd like to happen. CLI flags, new MCP tools, output formats, etc.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of RepoGraph does this touch?
+      options:
+        - CLI
+        - MCP server
+        - Web explorer
+        - Graph extraction / parsers
+        - Supply-chain audit
+        - Watch mode
+        - Rust core
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you considered and why this one is preferable.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Examples, references to similar tools, or anything else that helps motivate the request.
+    validations:
+      required: false

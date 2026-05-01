@@ -105,7 +105,11 @@ RepoGraph performs local static analysis. Architecture-focused security features
 
 The local web server is hardened against CORS bypass and DNS rebinding through a Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation. The CLI hardens git-backed commands by validating user-supplied refs and terminating option parsing with `--`. File reads bound size and use a single open handle to eliminate TOCTOU windows.
 
-If you discover a security issue in RepoGraph itself, please open a private report through GitHub security advisories if available, or contact the maintainers before public disclosure. Do not open a public issue with reproduction details for an unfixed vulnerability.
+To report a security issue, see [SECURITY.md](SECURITY.md). Do not open a public issue with reproduction details for an unfixed vulnerability.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold its terms.
 
 ## License
 
