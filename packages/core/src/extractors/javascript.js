@@ -1,3 +1,5 @@
+import { maskJavaScriptSource } from "./source-masker.js";
+
 const IMPORT_PATTERNS = [
   /\bimport\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g,
   /\bexport\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)["']([^"']+)["']/g,
@@ -20,16 +22,72 @@ const EXPORT_PATTERNS = [
 ];
 
 export function extractJavaScriptFacts(file, source) {
-  const symbols = extractSymbols(source);
+  const masked = safeMask(source);
+  const symbols = extractSymbols(masked);
+  const imports = extractImports(source);
+  const exports = extractExports(masked);
+  const additional = extractDefaultAndArrowSymbols(masked, symbols);
+  for (const symbol of additional) {
+    symbols.push(symbol);
+  }
 
   return {
     ...file,
     language: "javascript",
-    imports: extractImports(source),
-    exports: extractExports(source),
-    references: extractReferences(source, symbols),
+    imports,
+    exports: mergeDefaultExports(exports, masked),
+    references: extractReferences(masked, symbols),
     symbols
   };
+}
+
+function safeMask(source) {
+  try {
+    return maskJavaScriptSource(source);
+  } catch {
+    return source;
+  }
+}
+
+function extractDefaultAndArrowSymbols(source, existingSymbols) {
+  const seen = new Set(existingSymbols.map((symbol) => `${symbol.kind}:${symbol.name}`));
+  const additional = [];
+
+  const defaultClass = source.match(/\bexport\s+default\s+class\s+([A-Za-z_$][\w$]*)/);
+  if (defaultClass && !seen.has(`class:${defaultClass[1]}`)) {
+    additional.push({ kind: "class", name: defaultClass[1] });
+  }
+
+  const defaultFunction = source.match(/\bexport\s+default\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
+  if (defaultFunction && !seen.has(`function:${defaultFunction[1]}`)) {
+    additional.push({ kind: "function", name: defaultFunction[1] });
+  }
+
+  for (const match of source.matchAll(/\b(?:let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/g)) {
+    const key = `function:${match[1]}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      additional.push({ kind: "function", name: match[1] });
+    }
+  }
+
+  return additional;
+}
+
+function mergeDefaultExports(exports, source) {
+  const seen = new Set(exports.map((entry) => entry.name));
+  const merged = exports.slice();
+  const defaultClass = source.match(/\bexport\s+default\s+class\s+([A-Za-z_$][\w$]*)/);
+  if (defaultClass && !seen.has(defaultClass[1])) {
+    seen.add(defaultClass[1]);
+    merged.push({ name: defaultClass[1] });
+  }
+  const defaultFunction = source.match(/\bexport\s+default\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/);
+  if (defaultFunction && !seen.has(defaultFunction[1])) {
+    seen.add(defaultFunction[1]);
+    merged.push({ name: defaultFunction[1] });
+  }
+  return merged;
 }
 
 function extractImports(source) {
