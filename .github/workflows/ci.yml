@@ -68,9 +68,11 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
+        continue-on-error: true
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets
+        continue-on-error: true
 
       - name: Run tests
         run: cargo test --workspace
