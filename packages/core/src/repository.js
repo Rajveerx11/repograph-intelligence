@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { extractJavaScriptFacts } from "./extractors/javascript.js";
 import { extractPythonFacts } from "./extractors/python.js";
@@ -17,12 +17,10 @@ export async function analyzeRepository(repoPath, options = {}) {
   const maxFileBytes = boundedNumber(options.maxFileBytes, DEFAULT_MAX_FILE_BYTES, 1024, 25 * 1024 * 1024);
 
   for (const file of files) {
-    const fileStat = await stat(file.absolutePath);
-    if (fileStat.size > maxFileBytes) {
+    const source = await readBoundedFile(file.absolutePath, maxFileBytes);
+    if (source === null) {
       continue;
     }
-
-    const source = await readFile(file.absolutePath, "utf8");
     const extension = path.extname(file.absolutePath).toLowerCase();
 
     if (JS_EXTENSIONS.has(extension)) {
@@ -33,6 +31,19 @@ export async function analyzeRepository(repoPath, options = {}) {
   }
 
   return buildGraph({ root, files: facts });
+}
+
+async function readBoundedFile(absolutePath, maxBytes) {
+  const handle = await open(absolutePath, "r");
+  try {
+    const fileStat = await handle.stat();
+    if (!fileStat.isFile() || fileStat.size > maxBytes) {
+      return null;
+    }
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 async function resolveRepositoryRoot(repoPath) {
