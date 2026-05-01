@@ -24,7 +24,14 @@ export {
 } from "./operations.js";
 export { recommendArchitecture } from "./recommendations.js";
 export { analyzeSecurityRisk } from "./security.js";
+export {
+  analyzeSupplyChain,
+  parseCargoDependencies,
+  parsePyprojectDependencies,
+  parseRequirements
+} from "./supply-chain.js";
 export { analyzeRepositories, summarizeWorkspace } from "./workspace.js";
 export { buildSemanticIndex, semanticSearch } from "./semantic.js";
 export { compressContext, summarizeRepository } from "./summaries.js";
 export { loadGraph, saveGraph } from "./storage.js";
+export { startWatch } from "./watch.js";

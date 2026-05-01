@@ -6,6 +6,7 @@ import {
   analyzeRepositoryHistory,
   analyzeRepository,
   analyzeSecurityRisk,
+  analyzeSupplyChain,
   compareGraphSnapshots,
   createCiReport,
   createAgentContext,
@@ -174,6 +175,18 @@ const tools = [
         headSnapshot: { type: "object" }
       },
       required: ["baseSnapshot", "headSnapshot"]
+    }
+  },
+  {
+    name: "repograph_supply_chain",
+    description: "Audit dependency manifests, license risk, and optional OSV advisories.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string" },
+        online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
+      },
+      required: ["repoPath"]
     }
   },
   {
@@ -363,6 +376,11 @@ async function callTool(name, args) {
   }
   if (name === "repograph_compare") {
     return compareGraphSnapshots(requireObject(args.baseSnapshot, "baseSnapshot"), requireObject(args.headSnapshot, "headSnapshot"));
+  }
+  if (name === "repograph_supply_chain") {
+    return analyzeSupplyChain(requireRepoPath(args), {
+      online: args.online === true
+    });
   }
   if (name === "repograph_ci") {
     const graph = await analyzeRepository(requireRepoPath(args));

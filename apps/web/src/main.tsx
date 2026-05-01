@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import ReactFlow, { Background, Controls, MiniMap } from "reactflow";
 import "reactflow/dist/style.css";
@@ -16,6 +16,13 @@ import {
 } from "./graph-utils";
 import type { ActionId, ActionResult, GraphFilter } from "./types";
 
+type LiveStatus = {
+  connected: boolean;
+  lastUpdate: string | null;
+  files: number | null;
+  changedFiles: number | null;
+};
+
 function App() {
   const [graph, setGraph] = useState<RepoGraph>(SAMPLE_GRAPH);
   const [filter, setFilter] = useState<GraphFilter>("all");
@@ -26,6 +33,42 @@ function App() {
   const [runningAction, setRunningAction] = useState<ActionId | null>(null);
   const [agentQuery, setAgentQuery] = useState("");
   const [changedFiles, setChangedFiles] = useState("");
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>({
+    connected: false,
+    lastUpdate: null,
+    files: null,
+    changedFiles: null
+  });
+
+  useEffect(() => {
+    const source = new EventSource("/api/events");
+    source.addEventListener("open", () => {
+      setLiveStatus((previous) => ({ ...previous, connected: true }));
+    });
+    source.addEventListener("graph-updated", (event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent).data) as {
+          generatedAt: string;
+          metrics?: { files?: number };
+          changedFiles?: number;
+        };
+        setLiveStatus({
+          connected: true,
+          lastUpdate: payload.generatedAt,
+          files: payload.metrics?.files ?? null,
+          changedFiles: payload.changedFiles ?? 0
+        });
+      } catch {
+        // Ignore malformed payload.
+      }
+    });
+    source.addEventListener("error", () => {
+      setLiveStatus((previous) => ({ ...previous, connected: false }));
+    });
+    return () => {
+      source.close();
+    };
+  }, []);
 
   const visibleGraph = useMemo(() => filterGraph(graph, filter), [graph, filter]);
   const flowNodes = useMemo(() => toFlowNodes(visibleGraph.nodes, selected?.id), [visibleGraph.nodes, selected?.id]);
@@ -70,6 +113,17 @@ function App() {
           <Metric label="Edges" value={graph.edges.length} />
           <Metric label="Files" value={summary.files} />
           <Metric label="Packages" value={summary.packages} />
+        </div>
+
+        <div className="live-status" aria-live="polite">
+          <span className={`live-dot ${liveStatus.connected ? "on" : "off"}`} aria-hidden="true" />
+          <span>
+            {liveStatus.connected
+              ? liveStatus.lastUpdate
+                ? `Live - last update ${new Date(liveStatus.lastUpdate).toLocaleTimeString()}`
+                : "Live - waiting for first event"
+              : "Live: offline"}
+          </span>
         </div>
 
         <div className="header-actions">

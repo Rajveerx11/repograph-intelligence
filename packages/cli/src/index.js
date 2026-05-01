@@ -11,6 +11,7 @@ import {
   analyzeRepositoryHistory,
   analyzeRepository,
   analyzeSecurityRisk,
+  analyzeSupplyChain,
   calculateMetrics,
   compareGraphSnapshots,
   compressContext,
@@ -28,6 +29,7 @@ import {
   summarizeRepository,
   validateGraph
 } from "../../core/src/index.js";
+import { startWatch } from "../../core/src/watch.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_MAX_JSON_BYTES = 25 * 1024 * 1024;
@@ -84,6 +86,10 @@ try {
     await compareCommand(args);
   } else if (command === "ci") {
     await ciCommand(args);
+  } else if (command === "supply-chain") {
+    await supplyChainCommand(args);
+  } else if (command === "watch") {
+    await watchCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -542,6 +548,77 @@ async function ciCommand(args) {
   }
 }
 
+async function supplyChainCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const result = await analyzeSupplyChain(target, {
+    online: Boolean(options.online),
+    timeoutMs: options.timeout ? Number(options.timeout) : undefined
+  });
+
+  if (options.out) {
+    await writeJson(options.out, result);
+    console.log(`Supply chain report: ${path.resolve(options.out)}`);
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(result.summary);
+  console.log(`Manifests: ${result.manifests.map((manifest) => `${manifest.ecosystem}:${manifest.path}`).join(", ") || "none"}`);
+  console.log(`Dependencies: ${result.dependencyCount}`);
+  if (!result.findings.length) {
+    console.log("No supply chain risks detected.");
+    return;
+  }
+  console.log("Findings:");
+  for (const finding of result.findings.slice(0, Number(options.limit ?? 25))) {
+    const advisoryLine = finding.advisories?.length
+      ? ` (${finding.advisories.map((advisory) => advisory.id).join(", ")})`
+      : "";
+    console.log(`- ${String(finding.severity).toUpperCase()} ${finding.type} ${finding.ecosystem}:${finding.name}${finding.version ? `@${finding.version}` : ""}${advisoryLine}`);
+    if (finding.message) {
+      console.log(`  ${finding.message}`);
+    }
+  }
+}
+
+async function watchCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const root = path.resolve(target);
+  const outputPath = options.out ?? path.join(root, ".repograph", "graph.json");
+  const debounceMs = options.debounce ? Number(options.debounce) : 350;
+  console.log(`Watching ${root}`);
+  console.log(`Graph output: ${outputPath}`);
+
+  const stop = await startWatch(root, {
+    outputPath,
+    debounceMs,
+    onUpdate: (event) => {
+      const time = new Date().toISOString();
+      if (event.type === "ready") {
+        console.log(`[${time}] initial graph saved (files: ${event.metrics.files}, edges: ${event.metrics.internalDependencies + event.metrics.externalDependencies})`);
+        return;
+      }
+      if (event.type === "updated") {
+        console.log(`[${time}] graph updated after ${event.changedFiles} change(s) (files: ${event.metrics.files}, ms: ${event.durationMs})`);
+        return;
+      }
+      if (event.type === "error") {
+        console.error(`[${time}] watch error: ${event.error.message}`);
+      }
+    }
+  });
+
+  const shutdown = async (code) => {
+    await stop();
+    process.exit(code);
+  };
+  process.on("SIGINT", () => { shutdown(0); });
+  process.on("SIGTERM", () => { shutdown(0); });
+}
+
 function parseTargetAndOptions(args) {
   const options = {};
   const positional = [];
@@ -600,6 +677,20 @@ function parseTargetAndOptions(args) {
     }
     if (arg === "--json") {
       options.json = true;
+      continue;
+    }
+    if (arg === "--online") {
+      options.online = true;
+      continue;
+    }
+    if (arg === "--timeout") {
+      options.timeout = requireValue(args, index, "--timeout");
+      index += 1;
+      continue;
+    }
+    if (arg === "--debounce") {
+      options.debounce = requireValue(args, index, "--debounce");
+      index += 1;
       continue;
     }
     positional.push(arg);
@@ -737,8 +828,8 @@ function looksLikeDirectory(value) {
 }
 
 async function gitChangedFiles(target, options) {
-  const base = options.base ?? "origin/main";
-  const head = options.head ?? "HEAD";
+  const base = assertSafeGitRef(options.base ?? "origin/main", "--base");
+  const head = assertSafeGitRef(options.head ?? "HEAD", "--head");
   const range = base === head ? head : `${base}...${head}`;
   try {
     const { stdout } = await execFileAsync("git", [
@@ -747,7 +838,8 @@ async function gitChangedFiles(target, options) {
       "diff",
       "--name-only",
       "--diff-filter=ACMRTUXB",
-      range
+      range,
+      "--"
     ], {
       maxBuffer: GIT_MAX_BUFFER_BYTES,
       timeout: GIT_TIMEOUT_MS
@@ -756,6 +848,19 @@ async function gitChangedFiles(target, options) {
   } catch (error) {
     throw new Error(`failed to read git diff for ${range}: ${error.message}`);
   }
+}
+
+function assertSafeGitRef(value, optionName) {
+  if (typeof value !== "string" || !value.length) {
+    throw new Error(`${optionName} must be a non-empty git ref`);
+  }
+  if (value.startsWith("-")) {
+    throw new Error(`${optionName} must not start with '-'`);
+  }
+  if (/[\s\x00-\x1f\x7f]/.test(value)) {
+    throw new Error(`${optionName} contains invalid whitespace or control characters`);
+  }
+  return value;
 }
 
 async function readJson(filePath) {
@@ -802,6 +907,8 @@ Usage:
   repograph snapshot [repo] [--graph path] [--out path] [--json]
   repograph compare --base snapshot.json --head snapshot.json [--json]
   repograph ci [repo] [--baseline snapshot.json] [--fail-on high|medium|low] [--out path] [--json]
+  repograph supply-chain [repo] [--online] [--timeout ms] [--out path] [--json]
+  repograph watch [repo] [--out path] [--debounce ms]
   repograph mcp
 
 Commands:
@@ -826,6 +933,8 @@ Commands:
   snapshot Create a stable graph intelligence snapshot
   compare  Compare two graph snapshots
   ci       Produce CI-oriented structural intelligence report
+  supply-chain Audit dependency manifests, licenses, and OSV advisories
+  watch    Watch the repository and emit incremental graph updates
   mcp      Start the RepoGraph MCP stdio server
 `);
 }

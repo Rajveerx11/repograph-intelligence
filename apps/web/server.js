@@ -6,6 +6,7 @@ import { createServer as createViteServer } from "vite";
 import {
   analyzeRepository,
   analyzeSecurityRisk,
+  analyzeSupplyChain,
   compressContext,
   createAgentContext,
   loadGraph,
@@ -14,6 +15,7 @@ import {
   scoreDependencyRisk,
   summarizeRepository
 } from "../../packages/core/src/index.js";
+import { startWatch } from "../../packages/core/src/watch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../..");
@@ -28,6 +30,10 @@ const allowedOrigins = new Set([
   `http://127.0.0.1:${port}`,
   `http://localhost:${port}`
 ]);
+const allowedHosts = new Set([
+  `127.0.0.1:${port}`,
+  `localhost:${port}`
+]);
 
 const vite = await createViteServer({
   appType: "spa",
@@ -38,8 +44,17 @@ const vite = await createViteServer({
   }
 });
 
+const sseClients = new Set();
+const watchEnabled = process.env.REPOGRAPH_WATCH !== "0";
+let stopWatcher = null;
+let lastGraphSnapshot = null;
+
 const server = createServer(async (request, response) => {
   try {
+    if (request.url === "/api/events") {
+      handleSse(request, response);
+      return;
+    }
     if (request.url?.startsWith("/api/")) {
       await handleApi(request, response);
       return;
@@ -60,9 +75,81 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "127.0.0.1", () => {
+server.listen(port, "127.0.0.1", async () => {
   console.log(`RepoGraph web app: http://127.0.0.1:${port}`);
+  if (watchEnabled) {
+    stopWatcher = await startWatch(rootDir, {
+      outputPath: graphPath,
+      onUpdate: (event) => {
+        if (event.type === "ready" || event.type === "updated") {
+          lastGraphSnapshot = {
+            generatedAt: new Date().toISOString(),
+            metrics: event.metrics,
+            durationMs: event.durationMs ?? 0,
+            changedFiles: event.changedFiles ?? 0
+          };
+          broadcastSse("graph-updated", lastGraphSnapshot);
+        }
+        if (event.type === "error") {
+          broadcastSse("watch-error", { message: event.error.message });
+        }
+      }
+    }).catch((error) => {
+      console.error("watch failed to start:", error.message);
+      return null;
+    });
+  }
 });
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, async () => {
+    if (stopWatcher) {
+      await stopWatcher();
+    }
+    server.close(() => process.exit(0));
+  });
+}
+
+function handleSse(request, response) {
+  if (request.method !== "GET") {
+    sendJson(response, 405, { error: "Method not allowed." });
+    return;
+  }
+  if (!isTrustedHost(request)) {
+    sendJson(response, 403, { error: "Untrusted request host." });
+    return;
+  }
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  response.write(": connected\n\n");
+  if (lastGraphSnapshot) {
+    response.write(`event: graph-updated\ndata: ${JSON.stringify(lastGraphSnapshot)}\n\n`);
+  }
+  const heartbeat = setInterval(() => {
+    response.write(": ping\n\n");
+  }, 25000);
+  const client = { response, heartbeat };
+  sseClients.add(client);
+  request.on("close", () => {
+    clearInterval(heartbeat);
+    sseClients.delete(client);
+  });
+}
+
+function broadcastSse(eventName, payload) {
+  const frame = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.response.write(frame);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
 
 async function handleApi(request, response) {
   if (request.method !== "POST") {
@@ -70,8 +157,18 @@ async function handleApi(request, response) {
     return;
   }
 
+  if (!isTrustedHost(request)) {
+    sendJson(response, 403, { error: "Untrusted request host." });
+    return;
+  }
+
   if (!isTrustedOrigin(request)) {
     sendJson(response, 403, { error: "Untrusted request origin." });
+    return;
+  }
+
+  if (request.headers["sec-fetch-site"] && request.headers["sec-fetch-site"] !== "same-origin") {
+    sendJson(response, 403, { error: "Cross-site request blocked." });
     return;
   }
 
@@ -158,6 +255,15 @@ async function runAction(graph, body) {
     };
   }
 
+  if (action === "supply-chain") {
+    const report = await analyzeSupplyChain(rootDir, { online: body.online === true });
+    return {
+      title: "Supply chain audited",
+      message: report.summary,
+      payload: report
+    };
+  }
+
   throw new Error("Unknown action.");
 }
 
@@ -219,9 +325,23 @@ function sanitizeText(value) {
 function isTrustedOrigin(request) {
   const origin = request.headers.origin;
   if (!origin) {
-    return true;
+    const referer = request.headers.referer;
+    if (!referer) {
+      return true;
+    }
+    try {
+      const refererOrigin = new URL(referer).origin;
+      return allowedOrigins.has(refererOrigin);
+    } catch {
+      return false;
+    }
   }
   return allowedOrigins.has(origin);
+}
+
+function isTrustedHost(request) {
+  const host = request.headers.host;
+  return typeof host === "string" && allowedHosts.has(host);
 }
 
 function sanitizePort(value, fallback) {
