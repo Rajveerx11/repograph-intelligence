@@ -20,7 +20,8 @@ export const ACTIONS = [
   { id: "agent-context", label: "Agent context", tone: "default" },
   { id: "risk", label: "Rank risk", tone: "default" },
   { id: "security", label: "Security scan", tone: "default" },
-  { id: "recommend", label: "Recommendations", tone: "default" }
+  { id: "recommend", label: "Recommendations", tone: "default" },
+  { id: "supply-chain", label: "Supply chain audit", tone: "default" }
 ] as const;
 
 export const SAMPLE_GRAPH: RepoGraph = {
