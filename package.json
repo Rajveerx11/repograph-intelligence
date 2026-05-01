@@ -16,7 +16,7 @@
     "mcp": "node ./packages/mcp/src/server.js",
     "web": "node ./apps/web/server.js",
     "web:build": "npm --workspace @repograph/web run build",
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test test/core.test.js test/features.test.js",
     "check": "node --check ./packages/cli/src/index.js && node --check ./packages/mcp/src/server.js",
     "audit": "npm audit --omit=dev"
   },
