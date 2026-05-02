@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer as createViteServer } from "vite";
@@ -18,11 +18,12 @@ import {
 import { startWatch } from "../../packages/core/src/watch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, "../..");
 const webDir = __dirname;
-const graphPath = path.join(rootDir, ".repograph", "graph.json");
-const contextPath = path.join(rootDir, ".repograph", "context.md");
-const agentContextPath = path.join(rootDir, ".repograph", "agent-context.json");
+
+let rootDir = path.resolve(__dirname, "../..");
+let graphPath = path.join(rootDir, ".repograph", "graph.json");
+let contextPath = path.join(rootDir, ".repograph", "context.md");
+let agentContextPath = path.join(rootDir, ".repograph", "agent-context.json");
 const maxApiBodyBytes = 64 * 1024;
 const maxTextInputLength = 2000;
 const port = sanitizePort(process.env.PORT, 5173);
@@ -34,6 +35,19 @@ const allowedHosts = new Set([
   `127.0.0.1:${port}`,
   `localhost:${port}`
 ]);
+
+const allowedRoots = (process.env.REPOGRAPH_ALLOWED_ROOTS ?? "")
+  .split(",")
+  .map((root) => root.trim())
+  .filter(Boolean)
+  .map((root) => path.resolve(root));
+
+function setProjectRoot(newRoot) {
+  rootDir = newRoot;
+  graphPath = path.join(rootDir, ".repograph", "graph.json");
+  contextPath = path.join(rootDir, ".repograph", "context.md");
+  agentContextPath = path.join(rootDir, ".repograph", "agent-context.json");
+}
 
 const vite = await createViteServer({
   appType: "spa",
@@ -48,6 +62,12 @@ const sseClients = new Set();
 const watchEnabled = process.env.REPOGRAPH_WATCH !== "0";
 let stopWatcher = null;
 let lastGraphSnapshot = null;
+let setRootInFlight = false;
+
+function isPathInside(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
 
 const server = createServer(async (request, response) => {
   try {
@@ -152,13 +172,28 @@ function broadcastSse(eventName, payload) {
 }
 
 async function handleApi(request, response) {
-  if (request.method !== "POST") {
-    sendJson(response, 405, { error: "Method not allowed." });
+  if (!isTrustedHost(request)) {
+    sendJson(response, 403, { error: "Untrusted request host." });
     return;
   }
 
-  if (!isTrustedHost(request)) {
-    sendJson(response, 403, { error: "Untrusted request host." });
+  if (request.url === "/api/root" && request.method === "GET") {
+    sendJson(response, 200, { root: rootDir });
+    return;
+  }
+
+  if (request.url === "/api/graph" && request.method === "GET") {
+    try {
+      const graph = await loadGraph(graphPath);
+      sendJson(response, 200, { graph });
+    } catch {
+      sendJson(response, 404, { error: "No graph available yet. Run analyze first." });
+    }
+    return;
+  }
+
+  if (request.method !== "POST") {
+    sendJson(response, 405, { error: "Method not allowed." });
     return;
   }
 
@@ -174,6 +209,93 @@ async function handleApi(request, response) {
 
   const body = await readRequestJson(request, maxApiBodyBytes);
 
+  if (request.url === "/api/set-root") {
+    if (setRootInFlight) {
+      sendJson(response, 429, { error: "Another set-root is in progress. Try again shortly." });
+      return;
+    }
+    const newRoot = typeof body.root === "string" ? body.root.trim() : "";
+    if (!newRoot) {
+      sendJson(response, 400, { error: "Missing root path." });
+      return;
+    }
+    if (newRoot.length > 4096 || newRoot.includes("\0")) {
+      sendJson(response, 400, { error: "Invalid root path." });
+      return;
+    }
+    let resolved;
+    try {
+      resolved = await realpath(path.resolve(newRoot));
+    } catch {
+      sendJson(response, 400, { error: "Directory does not exist." });
+      return;
+    }
+    if (allowedRoots.length > 0 && !allowedRoots.some((allowed) => isPathInside(resolved, allowed))) {
+      sendJson(response, 403, { error: "Path is outside allowed roots." });
+      return;
+    }
+    try {
+      const info = await stat(resolved);
+      if (!info.isDirectory()) {
+        sendJson(response, 400, { error: "Path is not a directory." });
+        return;
+      }
+    } catch {
+      sendJson(response, 400, { error: "Directory does not exist." });
+      return;
+    }
+    setRootInFlight = true;
+    let graph = null;
+    let analyzeError = null;
+    try {
+      setProjectRoot(resolved);
+      if (stopWatcher) {
+        try { await stopWatcher(); } catch {}
+        stopWatcher = null;
+      }
+      lastGraphSnapshot = null;
+      try {
+        graph = await analyzeRepository(rootDir);
+        await saveGraph(graph, graphPath);
+      } catch (error) {
+        analyzeError = error instanceof Error ? error.message : "Failed to analyze project.";
+      }
+      if (watchEnabled) {
+        stopWatcher = await startWatch(rootDir, {
+          outputPath: graphPath,
+          onUpdate: (event) => {
+            if (event.type === "ready" || event.type === "updated") {
+              lastGraphSnapshot = {
+                generatedAt: new Date().toISOString(),
+                metrics: event.metrics,
+                durationMs: event.durationMs ?? 0,
+                changedFiles: event.changedFiles ?? 0
+              };
+              broadcastSse("graph-updated", lastGraphSnapshot);
+            }
+            if (event.type === "error") {
+              broadcastSse("watch-error", { message: event.error.message });
+            }
+          }
+        }).catch((error) => {
+          console.error("watch failed to start:", error.message);
+          return null;
+        });
+      }
+    } finally {
+      setRootInFlight = false;
+    }
+    sendJson(response, 200, {
+      root: resolved,
+      message: analyzeError
+        ? `Project root updated, but analysis failed: ${analyzeError}`
+        : "Project root updated and analyzed.",
+      graph,
+      analyzeError
+    });
+    return;
+  }
+
   if (request.url === "/api/analyze") {
     const graph = await analyzeRepository(rootDir);
     await saveGraph(graph, graphPath);
@@ -181,7 +303,8 @@ async function handleApi(request, response) {
       title: "Repository analyzed",
       message: "Graph saved to the local .repograph workspace.",
       graph,
-      payload: summarizeRepository(graph)
+      payload: summarizeRepository(graph),
+      formattedText: compressContext(graph)
     });
     return;
   }
@@ -203,7 +326,8 @@ async function runAction(graph, body) {
     return {
       title: "Architecture explained",
       message: "Generated a repository architecture summary.",
-      payload: summarizeRepository(graph)
+      payload: summarizeRepository(graph),
+      formattedText: compressContext(graph)
     };
   }
 
@@ -232,26 +356,32 @@ async function runAction(graph, body) {
   }
 
   if (action === "risk") {
+    const risks = scoreDependencyRisk(graph).slice(0, 12);
     return {
       title: "Dependency risk ranked",
       message: "Showing the highest-risk files by coupling and dependency pressure.",
-      payload: scoreDependencyRisk(graph).slice(0, 12)
+      payload: risks,
+      formattedText: formatRiskAsText(risks)
     };
   }
 
   if (action === "security") {
+    const security = analyzeSecurityRisk(graph, { limit: 12 });
     return {
       title: "Security surfaces checked",
       message: "Found security-sensitive architecture signals.",
-      payload: analyzeSecurityRisk(graph, { limit: 12 })
+      payload: security,
+      formattedText: formatSecurityAsText(security)
     };
   }
 
   if (action === "recommend") {
+    const recs = recommendArchitecture(graph, { limit: 12 });
     return {
       title: "Recommendations generated",
       message: "Generated architecture improvement recommendations.",
-      payload: recommendArchitecture(graph, { limit: 12 })
+      payload: recs,
+      formattedText: formatRecommendationsAsText(recs)
     };
   }
 
@@ -260,11 +390,95 @@ async function runAction(graph, body) {
     return {
       title: "Supply chain audited",
       message: report.summary,
-      payload: report
+      payload: report,
+      formattedText: formatSupplyChainAsText(report)
     };
   }
 
   throw new Error("Unknown action.");
+}
+
+function formatRiskAsText(risks) {
+  if (!risks.length) {
+    return "No high-risk files detected.";
+  }
+  const lines = ["# Dependency Risk Rankings", ""];
+  for (const [index, risk] of risks.entries()) {
+    lines.push(`${index + 1}. ${risk.path} — risk: ${risk.level} (score ${risk.score})`);
+    lines.push(`   Incoming: ${risk.incoming}, Outgoing: ${risk.outgoing}, External: ${risk.externalDependencies}`);
+    if (risk.reasons?.length) {
+      lines.push(`   Reasons: ${risk.reasons.join("; ")}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function formatSecurityAsText(security) {
+  const lines = ["# Security Analysis", "", security.summary, ""];
+  if (security.findings?.length) {
+    lines.push("## Findings", "");
+    for (const finding of security.findings) {
+      lines.push(`- [${finding.severity.toUpperCase()}] ${finding.message}`);
+      if (finding.target) {
+        lines.push(`  Target: ${finding.target}`);
+      }
+    }
+    lines.push("");
+  }
+  if (security.criticalBlastZones?.length) {
+    lines.push("## Critical Blast Zones", "");
+    for (const zone of security.criticalBlastZones) {
+      lines.push(`- ${zone.path} — risk: ${zone.risk}, blast radius: ${zone.blastRadius} file(s)`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function formatRecommendationsAsText(recs) {
+  if (!recs.length) {
+    return "No recommendations at this time.";
+  }
+  const lines = ["# Architecture Recommendations", ""];
+  for (const [index, rec] of recs.entries()) {
+    lines.push(`${index + 1}. [${rec.priority.toUpperCase()}] ${rec.title}`);
+    lines.push(`   Target: ${rec.target}`);
+    lines.push(`   Reason: ${rec.reason}`);
+    if (rec.actions?.length) {
+      for (const action of rec.actions) {
+        lines.push(`   - ${action}`);
+      }
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function formatSupplyChainAsText(report) {
+  const lines = ["# Supply Chain Audit", "", report.summary, ""];
+  if (report.manifests?.length) {
+    lines.push(`Manifests scanned: ${report.manifests.length}`);
+    for (const manifest of report.manifests) {
+      lines.push(`  - ${manifest.path}: ${manifest.dependencies?.length ?? 0} dependencies`);
+    }
+    lines.push("");
+  }
+  if (report.licenses?.length) {
+    lines.push("## Licenses", "");
+    for (const license of report.licenses) {
+      lines.push(`- ${license.name}: ${license.license ?? "unknown"} (${license.risk ?? "unknown"})`);
+    }
+    lines.push("");
+  }
+  if (report.advisories?.length) {
+    lines.push("## Advisories", "");
+    for (const advisory of report.advisories) {
+      lines.push(`- ${advisory.package}: ${advisory.title ?? advisory.summary ?? "advisory"} (${advisory.severity ?? "unknown"})`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 async function getGraph() {

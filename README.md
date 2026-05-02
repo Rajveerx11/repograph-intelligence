@@ -48,8 +48,10 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
-- Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds
-- Hardens the local web server against CORS bypass and DNS rebinding via Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation
+- Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds and auto-refreshes the visible graph when the watcher rebuilds
+- Lets users open any project from the explorer header by entering a folder path and clicking **Open Project**, which switches the analyzed root, runs analysis synchronously, and renders the new graph
+- Renders every action result with a human-readable Summary view alongside a JSON view, with a one-click **Copy JSON for LLM** button for pasting structured context into AI assistants
+- Hardens the local web server against CORS bypass and DNS rebinding via Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation, and validates project-root switches with `realpath`-resolved path containment checks plus an optional `REPOGRAPH_ALLOWED_ROOTS` allowlist to defeat symlink and prefix-bypass attacks
 - Includes a Rust Phase 1 core workspace for parser, graph, storage, metrics, and CLI foundations
 
 ## Phase Coverage
@@ -85,6 +87,22 @@ Build the graph explorer UI:
 ```bash
 npm run web:build
 ```
+
+Run the live graph explorer:
+
+```bash
+npm run web
+```
+
+Then open `http://127.0.0.1:5173`, paste any project path into the header input, and click **Open Project**. The server analyzes that project, the graph renders, and a watcher streams updates over SSE so saved file edits re-render the graph automatically. Every action result has a Summary/JSON toggle and a **Copy JSON for LLM** button.
+
+To restrict which paths the explorer is allowed to open (recommended for shared environments), set the `REPOGRAPH_ALLOWED_ROOTS` environment variable to a comma-separated list of absolute directories. Symlink escapes and prefix-bypass attempts (`/allowed-evil` against `/allowed`) are rejected. When unset, the explorer accepts any local path the server process can read.
+
+```bash
+REPOGRAPH_ALLOWED_ROOTS="/Users/me/code,/Users/me/work" npm run web
+```
+
+Use the **Import graph JSON** button in the header to load a previously saved `.repograph/graph.json` for offline viewing without re-analyzing.
 
 Analyze the current repository:
 

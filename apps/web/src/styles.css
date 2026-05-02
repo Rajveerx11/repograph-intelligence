@@ -24,11 +24,11 @@ body {
 
 .workspace-header {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(360px, 1.4fr) auto auto;
   align-items: center;
   gap: 22px;
-  height: 76px;
-  padding: 0 22px;
+  min-height: 76px;
+  padding: 12px 22px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.34);
   background: rgba(255, 255, 255, 0.84);
   box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
@@ -93,6 +93,62 @@ body {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-root-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.root-input {
+  min-width: 0;
+  width: 320px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  outline: none;
+}
+
+.root-input:focus {
+  border-color: rgba(37, 99, 235, 0.58);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.root-button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(37, 99, 235, 0.36);
+  border-radius: 6px;
+  background: #1d4ed8;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.root-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.root-button:hover:not(:disabled) {
+  background: #1e40af;
+}
+
+.root-error {
+  margin: 4px 0 0;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .header-metrics {
@@ -361,17 +417,81 @@ body {
   line-height: 1.45;
 }
 
+.result-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+
+.view-toggle {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 6px;
+  background: #eef2f6;
+}
+
+.view-toggle button {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.view-toggle button.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+}
+
+.copy-json-button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.copy-json-button:hover {
+  border-color: rgba(37, 99, 235, 0.38);
+  color: #1d4ed8;
+}
+
 .action-result pre {
   overflow: auto;
   max-height: 280px;
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   padding: 12px;
   border-top: 1px solid rgba(148, 163, 184, 0.22);
-  background: #0f172a;
-  color: #dbeafe;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.action-result pre.json-view {
+  background: #0f172a;
+  color: #dbeafe;
+}
+
+.action-result pre.text-view {
+  background: #f8fafc;
+  color: #1e293b;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .selection-card {
