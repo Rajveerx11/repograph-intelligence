@@ -13,7 +13,7 @@ High-value contribution areas:
 - Architecture rules and recommendation quality
 - Supply-chain auditing: more manifest formats (Gemfile, go.mod, pnpm/yarn lockfiles), advisory caching, license-policy rules
 - Watch mode: incremental graph mutation instead of full rebuilds, smarter ignore globs, large-monorepo benchmarks
-- Web explorer: SSE reconnection UX, graph diff overlays, keyboard navigation
+- Web explorer: SSE reconnection UX, graph diff overlays, keyboard navigation, project-picker UX (recent projects, drag-drop folder, validation feedback)
 - MCP tool ergonomics, including new tools for watch state and supply-chain
 - Rust storage and traversal hardening
 - CLI output formats for CI and pull request workflows
@@ -62,6 +62,14 @@ Bring up the explorer with the SSE live indicator (the server starts the watcher
 npm run web
 ```
 
+The explorer header has a project-root input and **Open Project** button. Paste any local folder path and the server runs analysis on that path, swaps the watcher, and renders the resulting graph. To restrict which paths the explorer can open, set `REPOGRAPH_ALLOWED_ROOTS` to a comma-separated list of absolute directories before starting the server:
+
+```bash
+REPOGRAPH_ALLOWED_ROOTS="/Users/me/code" npm run web
+```
+
+Path checks resolve symlinks via `realpath` and use `path.relative` containment (not raw `startsWith`), so prefix-bypass attempts and symlink escapes are rejected. Concurrent `/api/set-root` requests are serialized to prevent root-switch races mid-analyze.
+
 ## Pull Request Guidelines
 
 Before opening a pull request:
@@ -88,6 +96,8 @@ cargo test --workspace
 - Avoid broad refactors unless they are required for the feature.
 - Use `execFile` with array arguments for any subprocess call. Validate user-supplied refs/paths with explicit allowlists before passing them to child processes, and append `--` to terminate option parsing wherever positional arguments may be user-controlled.
 - For file I/O on user-controlled paths, prefer a single `fs.open` handle for stat-then-read so there is no TOCTOU window.
+- For directory containment checks, use `path.relative(parent, child)` and reject results that start with `..` or are absolute, instead of `String.prototype.startsWith`. Resolve symlinks with `fs.realpath` before the containment check so `/allowed/link → /etc` cannot escape the allowlist.
+- Serialize state-mutating endpoints (such as `/api/set-root`) with an in-flight flag and `try/finally` lock release, so concurrent requests cannot corrupt mutable server state mid-operation.
 
 ## Reporting Issues
 
@@ -104,6 +114,8 @@ When opening an issue, include:
 RepoGraph performs local static analysis. Architecture-focused security features highlight sensitive blast zones, wide dependency surfaces, cycles, and coupling patterns. The supply-chain audit additionally parses dependency manifests, classifies licenses, and (with `--online`) cross-checks OSV.dev for known advisories.
 
 The local web server is hardened against CORS bypass and DNS rebinding through a Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation. The CLI hardens git-backed commands by validating user-supplied refs and terminating option parsing with `--`. File reads bound size and use a single open handle to eliminate TOCTOU windows.
+
+The `/api/set-root` endpoint that lets the explorer open arbitrary projects validates input as follows: rejects empty, oversize (>4096), or NUL-containing paths; resolves the path with `fs.realpath` to defeat symlink escapes; checks containment against `REPOGRAPH_ALLOWED_ROOTS` (when set) using `path.relative` (not `startsWith`); confirms the target is a directory via `stat`; and serializes concurrent requests with an in-flight lock released in `finally`. Run the server with `REPOGRAPH_ALLOWED_ROOTS` set to a comma-separated allowlist whenever the explorer is exposed to untrusted local users.
 
 To report a security issue, see [SECURITY.md](SECURITY.md). Do not open a public issue with reproduction details for an unfixed vulnerability.
 

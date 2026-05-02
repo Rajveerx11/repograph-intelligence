@@ -10,5 +10,6 @@ export type ActionResult = {
   message: string;
   graph?: RepoGraph;
   payload: unknown;
+  formattedText?: string;
 };
 

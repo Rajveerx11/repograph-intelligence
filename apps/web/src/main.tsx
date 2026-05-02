@@ -4,7 +4,7 @@ import ReactFlow, { Background, Controls, MiniMap } from "reactflow";
 import "reactflow/dist/style.css";
 import "./styles.css";
 import type { RepoGraph, RepoGraphNode } from "@repograph/shared-types";
-import { findGraphNode, formatPayload, runRepoAction } from "./api";
+import { fetchCurrentGraph, fetchCurrentRoot, findGraphNode, formatPayload, runRepoAction, setProjectRoot } from "./api";
 import { ACTIONS, FILTERS, MAX_GRAPH_FILE_BYTES, SAMPLE_GRAPH } from "./constants";
 import {
   filterGraph,
@@ -33,6 +33,10 @@ function App() {
   const [runningAction, setRunningAction] = useState<ActionId | null>(null);
   const [agentQuery, setAgentQuery] = useState("");
   const [changedFiles, setChangedFiles] = useState("");
+  const [projectRoot, setProjectRootState] = useState<string>("");
+  const [rootInput, setRootInput] = useState<string>("");
+  const [rootError, setRootError] = useState<string | null>(null);
+  const [settingRoot, setSettingRoot] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>({
     connected: false,
     lastUpdate: null,
@@ -41,7 +45,50 @@ function App() {
   });
 
   useEffect(() => {
+    fetchCurrentRoot().then((root) => {
+      setProjectRootState(root);
+      setRootInput(root);
+    }).catch(() => {});
+  }, []);
+
+  async function handleSetRoot() {
+    if (!rootInput.trim() || rootInput.trim() === projectRoot) {
+      return;
+    }
+    setSettingRoot(true);
+    setRootError(null);
+    try {
+      const result = await setProjectRoot(rootInput.trim());
+      setProjectRootState(result.root);
+      setRootInput(result.root);
+      setSelected(null);
+      setActionError(null);
+      if (result.graph) {
+        setGraph(result.graph);
+        setActionResult({
+          title: "Project loaded",
+          message: `Analyzed ${result.root}. Graph rendered below.`,
+          payload: { root: result.root, nodes: result.graph.nodes.length, edges: result.graph.edges.length }
+        });
+      } else {
+        setGraph(SAMPLE_GRAPH);
+        setActionResult(null);
+        if (result.analyzeError) {
+          setRootError(result.analyzeError);
+        }
+      }
+    } catch (error) {
+      setRootError(error instanceof Error ? error.message : "Failed to set root.");
+    } finally {
+      setSettingRoot(false);
+    }
+  }
+
+  useEffect(() => {
     const source = new EventSource("/api/events");
+    let refetchSeq = 0;
+    let lastApplied = 0;
+    let cancelled = false;
     source.addEventListener("open", () => {
       setLiveStatus((previous) => ({ ...previous, connected: true }));
     });
@@ -58,6 +105,16 @@ function App() {
           files: payload.metrics?.files ?? null,
           changedFiles: payload.changedFiles ?? 0
         });
+        const seq = ++refetchSeq;
+        fetchCurrentGraph().then((latest) => {
+          if (cancelled || seq <= lastApplied) {
+            return;
+          }
+          if (latest) {
+            lastApplied = seq;
+            setGraph(latest);
+          }
+        }).catch(() => {});
       } catch {
         // Ignore malformed payload.
       }
@@ -66,6 +123,7 @@ function App() {
       setLiveStatus((previous) => ({ ...previous, connected: false }));
     });
     return () => {
+      cancelled = true;
       source.close();
     };
   }, []);
@@ -104,7 +162,29 @@ function App() {
           </div>
           <div>
             <h1>RepoGraph Intelligence</h1>
-            <p>{graph.root === "sample" ? "Sample workspace" : graph.root}</p>
+            <div className="project-root-control">
+              <input
+                type="text"
+                className="root-input"
+                value={rootInput}
+                placeholder="/path/to/your/project"
+                onChange={(event) => setRootInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    handleSetRoot();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="root-button"
+                disabled={settingRoot || !rootInput.trim() || rootInput.trim() === projectRoot}
+                onClick={handleSetRoot}
+              >
+                {settingRoot ? "Opening..." : "Open Project"}
+              </button>
+            </div>
+            {rootError ? <p className="root-error">{rootError}</p> : null}
           </div>
         </div>
 
@@ -139,9 +219,12 @@ function App() {
               </button>
             ))}
           </div>
-          <label className="load-button">
+          <label
+            className="load-button"
+            title="Import a previously saved graph.json (e.g. .repograph/graph.json) for offline viewing. To analyze a fresh project, use the path picker on the left."
+          >
             <UploadIcon />
-            <span>Load graph</span>
+            <span>Import graph JSON</span>
             <input
               className="sr-only"
               type="file"
@@ -213,6 +296,22 @@ function ActionConsole({
   onAgentQueryChange: (value: string) => void;
   onChangedFilesChange: (value: string) => void;
 }) {
+  const [showJson, setShowJson] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const hasFormattedText = actionResult?.formattedText != null;
+  const displayContent = showJson || !hasFormattedText
+    ? formatPayload(actionResult?.payload)
+    : actionResult?.formattedText ?? "";
+
+  function handleCopyJson() {
+    const json = formatPayload(actionResult?.payload);
+    navigator.clipboard.writeText(json).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
+
   return (
     <section className="action-console" aria-label="RepoGraph actions">
       <div className="action-inputs">
@@ -253,7 +352,30 @@ function ActionConsole({
         <article className="action-result">
           <h2>{actionResult.title}</h2>
           <p>{actionResult.message}</p>
-          <pre>{formatPayload(actionResult.payload)}</pre>
+          <div className="result-toolbar">
+            {hasFormattedText ? (
+              <div className="view-toggle">
+                <button
+                  type="button"
+                  className={!showJson ? "active" : ""}
+                  onClick={() => setShowJson(false)}
+                >
+                  Summary
+                </button>
+                <button
+                  type="button"
+                  className={showJson ? "active" : ""}
+                  onClick={() => setShowJson(true)}
+                >
+                  JSON
+                </button>
+              </div>
+            ) : null}
+            <button type="button" className="copy-json-button" onClick={handleCopyJson}>
+              {copied ? "Copied!" : "Copy JSON for LLM"}
+            </button>
+          </div>
+          <pre className={showJson || !hasFormattedText ? "json-view" : "text-view"}>{displayContent}</pre>
         </article>
       ) : null}
     </section>
