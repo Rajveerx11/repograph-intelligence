@@ -264,6 +264,34 @@ test("MCP server handles malformed input without dropping subsequent requests", 
   assert.match(output, /repograph_validate/);
 });
 
+test("MCP server exposes the repograph_mermaid tool with a typed schema", async () => {
+  const output = await runMcpProbe([
+    framedMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
+  ]);
+
+  assert.match(output, /"name":\s*"repograph_mermaid"/);
+  assert.match(output, /Mermaid flowchart/);
+  assert.match(output, /"direction"/);
+  assert.match(output, /"maxNodes"/);
+  assert.match(output, /"includeSymbols"/);
+});
+
+test("MCP server rejects an unknown direction for repograph_mermaid", async () => {
+  const output = await runMcpProbe([
+    framedMessage({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "repograph_mermaid",
+        arguments: { repoPath: process.cwd(), direction: "DIAGONAL" }
+      }
+    })
+  ]);
+
+  assert.match(output, /direction must be one of LR/);
+});
+
 function runMcpProbe(messages) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["packages/mcp/src/server.js"], {

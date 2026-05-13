@@ -16,6 +16,7 @@ import {
   recommendArchitecture,
   semanticSearch,
   summarizeRepository,
+  toMermaid,
   validateGraph
 } from "../../core/src/index.js";
 
@@ -185,6 +186,27 @@ const tools = [
       properties: {
         repoPath: { type: "string" },
         online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_mermaid",
+    description: "Export the repository dependency graph as a Mermaid flowchart that renders inline in Markdown.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze." },
+        direction: {
+          type: "string",
+          description: "Flowchart layout direction.",
+          enum: ["LR", "TD", "TB", "RL", "BT"]
+        },
+        includeSymbols: { type: "boolean", description: "Include function, class, method, interface, and module nodes." },
+        includePackages: { type: "boolean", description: "Include external package nodes (default true)." },
+        includeContains: { type: "boolean", description: "Render contains edges (file -> symbol)." },
+        maxNodes: { type: "number", description: "Cap on rendered nodes (1-5000, default 200)." },
+        maxEdges: { type: "number", description: "Cap on rendered edges (1-20000, default 400)." }
       },
       required: ["repoPath"]
     }
@@ -382,6 +404,29 @@ async function callTool(name, args) {
       online: args.online === true
     });
   }
+  if (name === "repograph_mermaid") {
+    const graph = await analyzeRepository(requireRepoPath(args));
+    const direction = optionalDirection(args.direction);
+    const options = {
+      direction,
+      includeSymbols: args.includeSymbols === true,
+      includePackages: args.includePackages !== false,
+      includeContains: args.includeContains === true,
+      maxNodes: boundedLimit(args.maxNodes, 200, 5000),
+      maxEdges: boundedLimit(args.maxEdges, 400, 20000)
+    };
+    return {
+      mermaid: toMermaid(graph, options),
+      options: {
+        direction: options.direction ?? "LR",
+        includeSymbols: options.includeSymbols,
+        includePackages: options.includePackages,
+        includeContains: options.includeContains,
+        maxNodes: options.maxNodes,
+        maxEdges: options.maxEdges
+      }
+    };
+  }
   if (name === "repograph_ci") {
     const graph = await analyzeRepository(requireRepoPath(args));
     return createCiReport(graph, {
@@ -445,6 +490,17 @@ function optionalObject(value, name) {
     return undefined;
   }
   return requireObject(value, name);
+}
+
+function optionalDirection(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const upper = typeof value === "string" ? value.toUpperCase() : "";
+  if (!["LR", "TD", "TB", "RL", "BT"].includes(upper)) {
+    throw new Error("direction must be one of LR, TD, TB, RL, BT.");
+  }
+  return upper;
 }
 
 function optionalSeverity(value) {
