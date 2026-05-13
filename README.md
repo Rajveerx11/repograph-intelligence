@@ -335,6 +335,7 @@ The server exposes these tools:
 | `repograph_security` | Identify security-sensitive architecture risk |
 | `repograph_supply_chain` | Audit dependency manifests, license risk, and optional OSV advisories |
 | `repograph_recommend` | Generate architecture improvement recommendations |
+| `repograph_mermaid` | Export the dependency graph as a Mermaid flowchart for Markdown viewers |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |
