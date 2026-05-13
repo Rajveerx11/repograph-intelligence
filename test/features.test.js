@@ -9,7 +9,8 @@ import {
   analyzeSupplyChain,
   parseCargoDependencies,
   parsePyprojectDependencies,
-  parseRequirements
+  parseRequirements,
+  toMermaid
 } from "../packages/core/src/index.js";
 import { startWatch } from "../packages/core/src/watch.js";
 import { maskJavaScriptSource } from "../packages/core/src/extractors/source-masker.js";
@@ -194,3 +195,99 @@ async function waitFor(predicate, timeoutMs) {
   }
   return null;
 }
+
+const mermaidFixtureGraph = {
+  version: 1,
+  generatedAt: "fixture",
+  root: "fixture",
+  nodes: [
+    { id: "file:src/index.ts", type: "file", label: "index.ts", path: "src/index.ts", language: "typescript" },
+    { id: "file:src/util.ts", type: "file", label: "util.ts", path: "src/util.ts", language: "typescript" },
+    { id: "package:express", type: "package", label: "express" },
+    { id: "function:src/util.ts:doThing", type: "function", label: "doThing", path: "src/util.ts" }
+  ],
+  edges: [
+    { id: "e1", type: "imports", from: "file:src/index.ts", to: "file:src/util.ts", scope: "internal" },
+    { id: "e2", type: "dependency", from: "file:src/index.ts", to: "package:express", scope: "external" },
+    { id: "e3", type: "contains", from: "file:src/util.ts", to: "function:src/util.ts:doThing", scope: "internal" }
+  ]
+};
+
+test("toMermaid renders flowchart with files and packages by default", () => {
+  const mermaid = toMermaid(mermaidFixtureGraph);
+
+  assert.match(mermaid, /^flowchart LR\n/);
+  assert.match(mermaid, /classDef file fill:#dbeafe/);
+  assert.match(mermaid, /classDef package fill:#e2e8f0/);
+  assert.match(mermaid, /\["index\.ts"\]:::file/);
+  assert.match(mermaid, /\["util\.ts"\]:::file/);
+  assert.match(mermaid, /\(\["express"\]\):::package/);
+  assert.match(mermaid, /n1 --> n2/);
+  assert.match(mermaid, /n1 -\.-> n3/);
+  assert.ok(!mermaid.includes("doThing"), "symbol nodes should be excluded by default");
+  assert.ok(!mermaid.includes("---"), "contains edges should be excluded by default");
+});
+
+test("toMermaid honors direction, symbols, and no-packages options", () => {
+  const mermaid = toMermaid(mermaidFixtureGraph, {
+    direction: "TD",
+    includeSymbols: true,
+    includePackages: false,
+    includeContains: true
+  });
+
+  assert.match(mermaid, /^flowchart TD\n/);
+  assert.match(mermaid, /doThing/);
+  assert.match(mermaid, /:::symbol/);
+  assert.ok(!mermaid.includes("express"), "package nodes should be excluded when includePackages=false");
+  assert.match(mermaid, / --- /);
+});
+
+test("toMermaid truncates large graphs and annotates the cap", () => {
+  const nodes = [];
+  const edges = [];
+  for (let index = 0; index < 50; index += 1) {
+    nodes.push({ id: `file:f${index}.ts`, type: "file", label: `f${index}.ts`, path: `f${index}.ts` });
+  }
+  for (let index = 0; index < 30; index += 1) {
+    edges.push({ id: `e${index}`, type: "imports", from: `file:f${index}.ts`, to: `file:f${index + 1}.ts`, scope: "internal" });
+  }
+  const graph = { version: 1, generatedAt: "t", root: "t", nodes, edges };
+
+  const mermaid = toMermaid(graph, { maxNodes: 10, maxEdges: 5 });
+
+  const nodeMatches = mermaid.match(/^  n\d+\["/gm) ?? [];
+  assert.equal(nodeMatches.length, 10);
+  assert.match(mermaid, /Truncated:/);
+  assert.match(mermaid, /nodes 10\/50/);
+  assert.match(mermaid, /edges capped at 5/);
+});
+
+test("toMermaid escapes quotes, angle brackets, and trims long labels", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:weird.ts", type: "file", label: "weird \"name\" <html>", path: "weird.ts" },
+      {
+        id: "package:long",
+        type: "package",
+        label: "x".repeat(120)
+      }
+    ],
+    edges: []
+  };
+
+  const mermaid = toMermaid(graph);
+
+  assert.ok(!/[^\\]"[^,:]]/.test(mermaid) || /\\"/.test(mermaid), "quotes should be escaped");
+  assert.ok(!mermaid.includes("<html>"), "angle brackets should be stripped or replaced");
+  assert.match(mermaid, /…"/, "long labels should be truncated with an ellipsis");
+});
+
+test("toMermaid throws on missing graph or malformed input", () => {
+  assert.throws(() => toMermaid(null), /requires a graph/);
+  assert.throws(() => toMermaid({}), /requires a graph/);
+  assert.throws(() => toMermaid({ nodes: [], edges: "nope" }), /requires a graph/);
+});

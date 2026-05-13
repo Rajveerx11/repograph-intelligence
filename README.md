@@ -47,6 +47,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Creates stable graph snapshots for baselines and CI
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
+- Exports the dependency graph as a Mermaid flowchart (`repograph mermaid`) that renders inline in GitHub READMEs, GitLab, Notion, and most Markdown viewers, with options for direction, node-type filters, symbol/contain edges, and explicit caps for monorepo-friendly truncation
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
 - Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds and auto-refreshes the visible graph when the watcher rebuilds
 - Lets users open any project from the explorer header by entering a folder path and clicking **Open Project**, which switches the analyzed root, runs analysis synchronously, and renders the new graph
@@ -252,6 +253,14 @@ Watch a repository and rebuild the graph on every file change:
 ```bash
 npm run repograph -- watch ./repo --debounce 250 --out .repograph/graph.json
 ```
+
+Export the dependency graph as a Mermaid flowchart that renders inline in GitHub READMEs, GitLab, Notion, and most modern Markdown viewers:
+
+```bash
+npm run repograph -- mermaid ./repo --max-nodes 80 --out .repograph/graph.mmd
+```
+
+Options: `--direction LR|TD|RL|BT` (default `LR`), `--symbols` to include function/class nodes, `--no-packages` to hide external packages, `--include-contains` to draw file → symbol edges, `--max-nodes n` / `--max-edges n` to cap output for readability. Without `--out` the diagram prints to stdout.
 
 The watcher collapses bursts of file changes inside a debounce window, emits structured events for tooling, and writes the latest graph back to disk. Press `Ctrl+C` to stop.
 
