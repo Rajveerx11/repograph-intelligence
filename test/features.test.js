@@ -291,3 +291,22 @@ test("toMermaid throws on missing graph or malformed input", () => {
   assert.throws(() => toMermaid({}), /requires a graph/);
   assert.throws(() => toMermaid({ nodes: [], edges: "nope" }), /requires a graph/);
 });
+
+test("toMermaid escapes pipes, backticks, and braces in labels to keep flowchart syntax safe", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:weird.ts", type: "file", label: "a|b `c` {d} e", path: "weird.ts" }
+    ],
+    edges: []
+  };
+
+  const mermaid = toMermaid(graph);
+
+  assert.ok(!mermaid.includes("a|b"), "pipe should not survive escaping");
+  assert.ok(!/`/.test(mermaid.split("\n").filter((line) => line.includes("weird")).join("")), "backticks should not appear inside node labels");
+  assert.ok(!mermaid.includes("{d}"), "curly braces should not appear inside node labels");
+  assert.match(mermaid, /a\/b/, "pipe should be replaced with forward slash");
+});
