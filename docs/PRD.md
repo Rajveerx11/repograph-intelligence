@@ -298,11 +298,16 @@ Calculate dependency density, circular dependencies, hotspot files, highly coupl
 repograph analyze ./repo
 repograph graph
 repograph stats
+repograph mermaid ./repo --out diagram.mmd
 ```
+
+#### 11.8 Diagram Export
+
+Convert any analyzed graph into a Mermaid flowchart that renders inline in GitHub, GitLab, Notion, and most Markdown viewers. Exposed both via the CLI (`repograph mermaid`) and the MCP tool `repograph_mermaid` so AI agents can request a paste-ready architecture diagram in the same conversation they use for analysis or context retrieval. Node labels are sanitized against parse-significant Mermaid characters; deterministic alias IDs make the output diff-friendly for CI drift detection.
 
 ### Deliverables
 
-The system should analyze repositories, generate dependency graphs, expose repository metrics, and visualize repository structure.
+The system should analyze repositories, generate dependency graphs, expose repository metrics, visualize repository structure interactively, and export the graph as a Mermaid flowchart for embedding in documentation, pull requests, and shared design notes.
 
 ### Success Criteria
 

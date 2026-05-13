@@ -260,7 +260,22 @@ Export the dependency graph as a Mermaid flowchart that renders inline in GitHub
 npm run repograph -- mermaid ./repo --max-nodes 80 --out .repograph/graph.mmd
 ```
 
-Options: `--direction LR|TD|RL|BT` (default `LR`), `--symbols` to include function/class nodes, `--no-packages` to hide external packages, `--include-contains` to draw file → symbol edges, `--max-nodes n` / `--max-edges n` to cap output for readability. Without `--out` the diagram prints to stdout.
+Options: `--direction LR|TD|RL|BT` (default `LR`), `--symbols` to include function/class nodes, `--no-packages` to hide external packages, `--include-contains` to draw file → symbol edges, `--max-nodes n` / `--max-edges n` to cap output for readability. Without `--out` the diagram prints to stdout. Invalid directions are rejected with a typed error rather than silently coerced.
+
+Sample output (paste any of these blocks into a GitHub README or comment to render natively):
+
+```mermaid
+flowchart LR
+  classDef file fill:#dbeafe,stroke:#1d4ed8,color:#0f172a;
+  classDef package fill:#e2e8f0,stroke:#475569,color:#0f172a;
+  n1["index.ts"]:::file
+  n2["util.ts"]:::file
+  n3(["express"]):::package
+  n1 --> n2
+  n1 -.-> n3
+```
+
+Edge styles distinguish relationship types: `-->` for internal imports, `-.->` for external dependencies, `==>` for explicit exports, `-. ref .->` for symbol references, and `---` for `contains` edges when `--include-contains` is set. Node IDs are stable per-graph aliases (`n1`, `n2`, …) so the output diffs cleanly in CI when used for baseline drift detection.
 
 The watcher collapses bursts of file changes inside a debounce window, emits structured events for tooling, and writes the latest graph back to disk. Press `Ctrl+C` to stop.
 
