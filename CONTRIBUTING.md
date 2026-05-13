@@ -10,7 +10,7 @@ High-value contribution areas:
 - Tree-sitter-backed extraction in the Rust parser engine, plus moving the JS pipeline onto a real AST when regex-plus-masker saturates
 - Hardening the source masker against tricky template-literal nesting and JSX edge cases
 - Graph algorithms for coupling, cycles, ownership, and impact analysis
-- Architecture rules and recommendation quality
+- Architecture rules and recommendation quality (the v1 policy engine ships `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, `max-lines` — new rule kinds, YAML loader, baseline-aware "no new violations" mode, and rule presets are all welcome additions)
 - Supply-chain auditing: more manifest formats (Gemfile, go.mod, pnpm/yarn lockfiles), advisory caching, license-policy rules
 - Watch mode: incremental graph mutation instead of full rebuilds, smarter ignore globs, large-monorepo benchmarks
 - Web explorer: SSE reconnection UX, graph diff overlays, keyboard navigation, project-picker UX (recent projects, drag-drop folder, validation feedback)

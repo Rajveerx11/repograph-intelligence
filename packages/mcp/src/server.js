@@ -13,10 +13,13 @@ import {
   createGuidanceReport,
   createGraphSnapshot,
   inferOwnership,
+  evaluatePolicy,
+  loadPolicy,
   recommendArchitecture,
   semanticSearch,
   summarizeRepository,
   toMermaid,
+  validatePolicy,
   validateGraph
 } from "../../core/src/index.js";
 
@@ -186,6 +189,24 @@ const tools = [
       properties: {
         repoPath: { type: "string" },
         online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_policy",
+    description: "Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) against the repository graph and return a pass/fail report.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze." },
+        policyPath: { type: "string", description: "Path to a .json policy file." },
+        policy: { type: "object", description: "Inline policy object (alternative to policyPath)." },
+        failOn: {
+          type: "string",
+          description: "Lowest severity that causes the report to fail.",
+          enum: ["info", "warning", "error"]
+        }
       },
       required: ["repoPath"]
     }
@@ -404,6 +425,20 @@ async function callTool(name, args) {
       online: args.online === true
     });
   }
+  if (name === "repograph_policy") {
+    const graph = await analyzeRepository(requireRepoPath(args));
+    if (!args.policy && !args.policyPath) {
+      throw new Error("repograph_policy requires either 'policy' or 'policyPath'.");
+    }
+    if (args.policy && args.policyPath) {
+      throw new Error("repograph_policy accepts only one of 'policy' or 'policyPath'.");
+    }
+    const policy = args.policyPath
+      ? await loadPolicy(requireString(args.policyPath, "policyPath"))
+      : validatePolicy(args.policy);
+    const failOn = optionalSeverityTier(args.failOn);
+    return evaluatePolicy(graph, policy, { failOn });
+  }
   if (name === "repograph_mermaid") {
     const graph = await analyzeRepository(requireRepoPath(args));
     const direction = optionalDirection(args.direction);
@@ -490,6 +525,16 @@ function optionalObject(value, name) {
     return undefined;
   }
   return requireObject(value, name);
+}
+
+function optionalSeverityTier(value) {
+  if (value === undefined) {
+    return "error";
+  }
+  if (!["info", "warning", "error"].includes(value)) {
+    throw new Error("failOn must be info, warning, or error.");
+  }
+  return value;
 }
 
 function optionalDirection(value) {

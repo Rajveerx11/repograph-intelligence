@@ -305,6 +305,10 @@ repograph mermaid ./repo --out diagram.mmd
 
 Convert any analyzed graph into a Mermaid flowchart that renders inline in GitHub, GitLab, Notion, and most Markdown viewers. Exposed both via the CLI (`repograph mermaid`) and the MCP tool `repograph_mermaid` so AI agents can request a paste-ready architecture diagram in the same conversation they use for analysis or context retrieval. Node labels are sanitized against parse-significant Mermaid characters; deterministic alias IDs make the output diff-friendly for CI drift detection.
 
+#### 11.9 Architecture Policy as Code
+
+Declarative `.repograph/policy.json` files express structural invariants — forbidden imports, forbidden external dependencies, scoped cycle prohibitions, fan-in/fan-out caps, and file-size limits — that the engine enforces against the analyzed graph. The `repograph policy` CLI command and the `repograph_policy` MCP tool produce a structured pass/fail report; the CLI exits with a non-zero status when violations meet the configured `--fail-on` threshold so CI can gate merges on architectural drift. Glob matching supports `**`, `*`, and `?`; severities (`info`, `warning`, `error`) let teams adopt rules incrementally without instantly breaking history.
+
 ### Deliverables
 
 The system should analyze repositories, generate dependency graphs, expose repository metrics, visualize repository structure interactively, and export the graph as a Mermaid flowchart for embedding in documentation, pull requests, and shared design notes.

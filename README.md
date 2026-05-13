@@ -47,6 +47,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Creates stable graph snapshots for baselines and CI
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
+- Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
 - Exports the dependency graph as a Mermaid flowchart (`repograph mermaid`) that renders inline in GitHub READMEs, GitLab, Notion, and most Markdown viewers, with options for direction, node-type filters, symbol/contain edges, and explicit caps for monorepo-friendly truncation
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
 - Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds and auto-refreshes the visible graph when the watcher rebuilds
@@ -277,6 +278,14 @@ flowchart LR
 
 Edge styles distinguish relationship types: `-->` for internal imports, `-.->` for external dependencies, `==>` for explicit exports, `-. ref .->` for symbol references, and `---` for `contains` edges when `--include-contains` is set. Node IDs are stable per-graph aliases (`n1`, `n2`, …) so the output diffs cleanly in CI when used for baseline drift detection.
 
+Enforce architecture rules ("policy as code") against the graph and fail CI on violations:
+
+```bash
+npm run repograph -- policy ./repo --policy .repograph/policy.json --fail-on warning
+```
+
+Policy files are JSON with five v1 rule types: `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines`. Globs accept `**`, `*`, and `?`. Each rule carries a severity (`info`, `warning`, `error`; default `error`). The CLI exits with status `2` when any violation meets the `--fail-on` threshold so CI can gate merges on structural invariants. See [`examples/policy.example.json`](examples/policy.example.json) for a starter file.
+
 The watcher collapses bursts of file changes inside a debounce window, emits structured events for tooling, and writes the latest graph back to disk. Press `Ctrl+C` to stop.
 
 Start the MCP server:
@@ -351,6 +360,7 @@ The server exposes these tools:
 | `repograph_supply_chain` | Audit dependency manifests, license risk, and optional OSV advisories |
 | `repograph_recommend` | Generate architecture improvement recommendations |
 | `repograph_mermaid` | Export the dependency graph as a Mermaid flowchart for Markdown viewers |
+| `repograph_policy` | Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) and return a pass/fail report |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |
