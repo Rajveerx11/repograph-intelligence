@@ -205,7 +205,7 @@ async function mermaidCommand(args) {
     ? await loadGraph(options.graph)
     : await analyzeRepository(target);
 
-  const direction = typeof options.direction === "string" ? options.direction.toUpperCase() : "LR";
+  const direction = parseDirectionFlag(options.direction);
   const maxNodes = options["max-nodes"] != null ? Number(options["max-nodes"]) : undefined;
   const maxEdges = options["max-edges"] != null ? Number(options["max-edges"]) : undefined;
 
@@ -877,6 +877,20 @@ function requireValue(args, index, optionName) {
     throw new Error(`${optionName} requires a value`);
   }
   return value;
+}
+
+function parseDirectionFlag(value) {
+  if (value == null) {
+    return "LR";
+  }
+  if (typeof value !== "string") {
+    throw new Error("--direction must be one of LR, TD, TB, RL, BT");
+  }
+  const upper = value.toUpperCase();
+  if (!["LR", "TD", "TB", "RL", "BT"].includes(upper)) {
+    throw new Error("--direction must be one of LR, TD, TB, RL, BT");
+  }
+  return upper;
 }
 
 function looksLikeDirectory(value) {

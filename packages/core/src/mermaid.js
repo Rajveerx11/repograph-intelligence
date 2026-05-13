@@ -159,7 +159,9 @@ function escapeLabel(value) {
     .replace(/\\/g, "\\\\")
     .replace(/"/g, "\\\"")
     .replace(/\r?\n/g, " ")
-    .replace(/[<>]/g, " ");
+    .replace(/[<>]/g, " ")
+    .replace(/\|/g, "/")
+    .replace(/[`{}]/g, " ");
 }
 
 function boundedInt(value, fallback, min, max) {
