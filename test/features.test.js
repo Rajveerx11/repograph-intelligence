@@ -7,10 +7,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   analyzeRepository,
   analyzeSupplyChain,
+  compileGlob,
+  evaluatePolicy,
+  loadPolicy,
   parseCargoDependencies,
   parsePyprojectDependencies,
   parseRequirements,
-  toMermaid
+  toMermaid,
+  validatePolicy
 } from "../packages/core/src/index.js";
 import { startWatch } from "../packages/core/src/watch.js";
 import { maskJavaScriptSource } from "../packages/core/src/extractors/source-masker.js";
@@ -290,6 +294,119 @@ test("toMermaid throws on missing graph or malformed input", () => {
   assert.throws(() => toMermaid(null), /requires a graph/);
   assert.throws(() => toMermaid({}), /requires a graph/);
   assert.throws(() => toMermaid({ nodes: [], edges: "nope" }), /requires a graph/);
+});
+
+const policyFixtureGraph = {
+  version: 1,
+  generatedAt: "fixture",
+  root: "fixture",
+  nodes: [
+    { id: "file:src/domain/user.ts", type: "file", path: "src/domain/user.ts", lineCount: 50, importCount: 3 },
+    { id: "file:src/domain/order.ts", type: "file", path: "src/domain/order.ts", lineCount: 700, importCount: 4 },
+    { id: "file:src/infra/db.ts", type: "file", path: "src/infra/db.ts", lineCount: 100, importCount: 2 },
+    { id: "file:src/util/big.ts", type: "file", path: "src/util/big.ts", lineCount: 200, importCount: 30 },
+    { id: "package:@aws-sdk/client-s3", type: "package", label: "@aws-sdk/client-s3" }
+  ],
+  edges: [
+    { id: "e1", type: "imports", from: "file:src/domain/user.ts", to: "file:src/infra/db.ts", scope: "internal" },
+    { id: "e2", type: "imports", from: "file:src/domain/order.ts", to: "file:src/domain/user.ts", scope: "internal" },
+    { id: "e3", type: "imports", from: "file:src/domain/user.ts", to: "file:src/domain/order.ts", scope: "internal" },
+    { id: "e4", type: "dependency", from: "file:src/util/big.ts", to: "package:@aws-sdk/client-s3", scope: "external" }
+  ]
+};
+
+test("compileGlob handles **, *, ?, and literal paths", () => {
+  assert.ok(compileGlob("src/**")("src/a/b.ts"));
+  assert.ok(compileGlob("src/**")("src/a.ts"));
+  assert.ok(!compileGlob("src/**")("lib/a.ts"));
+  assert.ok(compileGlob("src/*.ts")("src/a.ts"));
+  assert.ok(!compileGlob("src/*.ts")("src/sub/a.ts"));
+  assert.ok(compileGlob("src/file?.ts")("src/file1.ts"));
+  assert.ok(!compileGlob("src/file?.ts")("src/file12.ts"));
+  assert.ok(compileGlob("**")("anything/at/all"));
+  assert.ok(compileGlob("@aws-sdk/*")("@aws-sdk/client-s3"));
+});
+
+test("validatePolicy rejects malformed input and accepts well-formed rules", () => {
+  assert.throws(() => validatePolicy(null), /Policy must be an object/);
+  assert.throws(() => validatePolicy({ rules: "nope" }), /'rules' array/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "a", type: "what" }] }), /unsupported type/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "a", type: "max-lines", target: "**" }] }), /requires positive integer field 'limit'/);
+  assert.throws(() => validatePolicy({ rules: [
+    { id: "dup", type: "no-cycles" },
+    { id: "dup", type: "no-cycles" }
+  ] }), /Duplicate rule id/);
+
+  const ok = validatePolicy({ rules: [{ id: "r1", type: "max-lines", target: "src/**", limit: 100 }] });
+  assert.equal(ok.rules.length, 1);
+  assert.equal(ok.rules[0].severity, "error");
+});
+
+test("evaluatePolicy detects forbid-import, max-lines, max-imports, and forbid-dependency violations", () => {
+  const policy = validatePolicy({
+    rules: [
+      { id: "no-domain-into-infra", type: "forbid-import", severity: "error", from: "src/domain/**", to: "src/infra/**" },
+      { id: "small-files", type: "max-lines", severity: "warning", target: "src/**", limit: 500 },
+      { id: "bounded-imports", type: "max-imports", severity: "warning", target: "src/util/**", limit: 10 },
+      { id: "no-aws", type: "forbid-dependency", severity: "error", from: "src/util/**", to: "@aws-sdk/*" }
+    ]
+  });
+
+  const report = evaluatePolicy(policyFixtureGraph, policy);
+
+  assert.equal(report.passed, false);
+  const ids = report.violations.map((violation) => violation.ruleId);
+  assert.ok(ids.includes("no-domain-into-infra"));
+  assert.ok(ids.includes("small-files"));
+  assert.ok(ids.includes("bounded-imports"));
+  assert.ok(ids.includes("no-aws"));
+  assert.equal(report.counts.error, 2);
+  assert.equal(report.counts.warning, 2);
+});
+
+test("evaluatePolicy reports no-cycles within a scope and dedupes rotated cycles", () => {
+  const policy = validatePolicy({
+    rules: [{ id: "no-domain-cycles", type: "no-cycles", severity: "error", scope: "src/domain/**" }]
+  });
+
+  const report = evaluatePolicy(policyFixtureGraph, policy);
+  const cycleViolations = report.violations.filter((violation) => violation.ruleId === "no-domain-cycles");
+  assert.equal(cycleViolations.length, 1, "rotated cycles should be deduplicated to a single violation");
+  assert.match(cycleViolations[0].message, /Cycle detected within 'src\/domain\/\*\*'/);
+});
+
+test("evaluatePolicy passed flag respects failOn threshold", () => {
+  const policy = validatePolicy({
+    rules: [{ id: "size-warn", type: "max-lines", severity: "warning", target: "src/**", limit: 100 }]
+  });
+
+  const errorReport = evaluatePolicy(policyFixtureGraph, policy, { failOn: "error" });
+  assert.equal(errorReport.passed, true, "warnings should not fail when failOn=error");
+
+  const warningReport = evaluatePolicy(policyFixtureGraph, policy, { failOn: "warning" });
+  assert.equal(warningReport.passed, false, "warnings should fail when failOn=warning");
+});
+
+test("loadPolicy reads, parses, and validates a .json policy file", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "repograph-policy-"));
+  const policyPath = path.join(dir, "policy.json");
+  await writeFile(
+    policyPath,
+    JSON.stringify({
+      version: 1,
+      rules: [{ id: "r1", type: "max-lines", target: "**", limit: 200 }]
+    }),
+    "utf8"
+  );
+
+  const policy = await loadPolicy(policyPath);
+  assert.equal(policy.rules.length, 1);
+
+  const badPath = path.join(dir, "bad.yaml");
+  await writeFile(badPath, "noop", "utf8");
+  await assert.rejects(() => loadPolicy(badPath), /must use a \.json extension/);
+
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("toMermaid escapes pipes, backticks, and braces in labels to keep flowchart syntax safe", () => {

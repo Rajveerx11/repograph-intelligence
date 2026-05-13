@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "no-deep-files",
+      "type": "max-lines",
+      "severity": "warning",
+      "target": "packages/**",
+      "limit": 600
+    },
+    {
+      "id": "bounded-imports",
+      "type": "max-imports",
+      "severity": "warning",
+      "target": "packages/core/src/**",
+      "limit": 25
+    },
+    {
+      "id": "no-core-cycles",
+      "type": "no-cycles",
+      "severity": "error",
+      "scope": "packages/core/src/**"
+    },
+    {
+      "id": "web-app-cannot-import-cli",
+      "type": "forbid-import",
+      "severity": "error",
+      "from": "apps/web/**",
+      "to": "packages/cli/**"
+    },
+    {
+      "id": "core-cannot-pull-cloud-sdks",
+      "type": "forbid-dependency",
+      "severity": "error",
+      "from": "packages/core/**",
+      "to": "@aws-sdk/*"
+    }
+  ]
+}

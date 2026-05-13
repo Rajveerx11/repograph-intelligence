@@ -26,6 +26,8 @@ import {
   semanticSearch,
   simulateRefactor,
   scoreDependencyRisk,
+  evaluatePolicy,
+  loadPolicy,
   summarizeRepository,
   toMermaid,
   validateGraph
@@ -93,6 +95,8 @@ try {
     await watchCommand(args);
   } else if (command === "mermaid") {
     await mermaidCommand(args);
+  } else if (command === "policy") {
+    await policyCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -197,6 +201,55 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function policyCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  if (!options.policy) {
+    throw new Error("policy command requires --policy <path>");
+  }
+  const policy = await loadPolicy(options.policy);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const failOn = options.failOn ?? "error";
+  const report = evaluatePolicy(graph, policy, { failOn });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    console.log(`Policy report: ${outputPath}`);
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatPolicyReport(report));
+  }
+
+  if (!report.passed) {
+    process.exit(2);
+  }
+}
+
+function formatPolicyReport(report) {
+  const lines = [];
+  lines.push(`Rules evaluated: ${report.rulesEvaluated}`);
+  lines.push(`Fail on: ${report.failOn}`);
+  lines.push(`Violations — error: ${report.counts.error ?? 0}, warning: ${report.counts.warning ?? 0}, info: ${report.counts.info ?? 0}`);
+  if (report.violations.length === 0) {
+    lines.push("");
+    lines.push("No violations.");
+  } else {
+    lines.push("");
+    for (const violation of report.violations) {
+      lines.push(`[${violation.severity.toUpperCase()}] ${violation.ruleId} (${violation.ruleType}): ${violation.message}`);
+    }
+  }
+  lines.push("");
+  lines.push(`Status: ${report.passed ? "PASS" : "FAIL"}`);
+  return lines.join("\n");
 }
 
 async function mermaidCommand(args) {
@@ -753,6 +806,11 @@ function parseTargetAndOptions(args) {
       options["include-contains"] = true;
       continue;
     }
+    if (arg === "--policy") {
+      options.policy = requireValue(args, index, "--policy");
+      index += 1;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -984,6 +1042,7 @@ Usage:
   repograph supply-chain [repo] [--online] [--timeout ms] [--out path] [--json]
   repograph watch [repo] [--out path] [--debounce ms]
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
+  repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
   repograph mcp
 
 Commands:
@@ -1011,6 +1070,7 @@ Commands:
   supply-chain Audit dependency manifests, licenses, and OSV advisories
   watch    Watch the repository and emit incremental graph updates
   mermaid  Export the dependency graph as a Mermaid flowchart for Markdown viewers
+  policy   Evaluate architecture rules against the graph and produce a pass/fail report (exits non-zero on failure)
   mcp      Start the RepoGraph MCP stdio server
 `);
 }
