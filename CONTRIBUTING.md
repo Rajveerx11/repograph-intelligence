@@ -16,7 +16,7 @@ High-value contribution areas:
 - Web explorer: SSE reconnection UX, graph diff overlays, keyboard navigation, project-picker UX (recent projects, drag-drop folder, validation feedback)
 - MCP tool ergonomics, including new tools for watch state and supply-chain
 - Rust storage and traversal hardening
-- CLI output formats for CI and pull request workflows
+- CLI output formats for CI and pull request workflows (Mermaid export shipped — next up: PNG/SVG export from the web explorer, Mermaid via MCP, GraphViz/DOT export)
 - Test fixtures that model real repository shapes
 - Documentation, examples, and graph schema notes
 

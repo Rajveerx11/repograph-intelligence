@@ -27,6 +27,7 @@ import {
   simulateRefactor,
   scoreDependencyRisk,
   summarizeRepository,
+  toMermaid,
   validateGraph
 } from "../../core/src/index.js";
 import { startWatch } from "../../core/src/watch.js";
@@ -90,6 +91,8 @@ try {
     await supplyChainCommand(args);
   } else if (command === "watch") {
     await watchCommand(args);
+  } else if (command === "mermaid") {
+    await mermaidCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -194,6 +197,36 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function mermaidCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+
+  const direction = typeof options.direction === "string" ? options.direction.toUpperCase() : "LR";
+  const maxNodes = options["max-nodes"] != null ? Number(options["max-nodes"]) : undefined;
+  const maxEdges = options["max-edges"] != null ? Number(options["max-edges"]) : undefined;
+
+  const mermaid = toMermaid(graph, {
+    direction,
+    includeSymbols: options.symbols === true,
+    includePackages: options["no-packages"] !== true,
+    includeContains: options["include-contains"] === true,
+    maxNodes,
+    maxEdges
+  });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, mermaid, "utf8");
+    console.log(`Mermaid diagram: ${outputPath}`);
+    return;
+  }
+
+  console.log(mermaid);
 }
 
 async function impactCommand(args) {
@@ -693,6 +726,33 @@ function parseTargetAndOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === "--direction") {
+      options.direction = requireValue(args, index, "--direction");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-nodes") {
+      options["max-nodes"] = requireValue(args, index, "--max-nodes");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-edges") {
+      options["max-edges"] = requireValue(args, index, "--max-edges");
+      index += 1;
+      continue;
+    }
+    if (arg === "--symbols") {
+      options.symbols = true;
+      continue;
+    }
+    if (arg === "--no-packages") {
+      options["no-packages"] = true;
+      continue;
+    }
+    if (arg === "--include-contains") {
+      options["include-contains"] = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -909,6 +969,7 @@ Usage:
   repograph ci [repo] [--baseline snapshot.json] [--fail-on high|medium|low] [--out path] [--json]
   repograph supply-chain [repo] [--online] [--timeout ms] [--out path] [--json]
   repograph watch [repo] [--out path] [--debounce ms]
+  repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph mcp
 
 Commands:
@@ -935,6 +996,7 @@ Commands:
   ci       Produce CI-oriented structural intelligence report
   supply-chain Audit dependency manifests, licenses, and OSV advisories
   watch    Watch the repository and emit incremental graph updates
+  mermaid  Export the dependency graph as a Mermaid flowchart for Markdown viewers
   mcp      Start the RepoGraph MCP stdio server
 `);
 }
