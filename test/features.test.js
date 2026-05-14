@@ -498,6 +498,64 @@ test("diffApiSurface returns empty diff for identical graphs and accepts disabli
   assert.ok(!("byFile" in report), "byFile should be omitted when includeFileSummary is false");
 });
 
+test("diffApiSurface trims whitespace in export names and skips entries with empty path or name", () => {
+  const base = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts", label: "a.ts" },
+      { id: "symbol:src/a.ts:padded", type: "function", label: "padded", path: "src/a.ts" },
+      { id: "file:phantom", type: "file", path: "", label: "" },
+      { id: "symbol:phantom:noop", type: "function", label: "noop", path: "" }
+    ],
+    edges: [
+      { id: "e1", type: "exports", from: "file:src/a.ts", to: "symbol:src/a.ts:padded", exportedName: "  padded  " },
+      { id: "e2", type: "exports", from: "file:phantom", to: "symbol:phantom:noop", exportedName: "noop" },
+      { id: "e3", type: "exports", from: "file:src/a.ts", to: "symbol:src/a.ts:padded", exportedName: "   " }
+    ]
+  };
+  const head = buildExportGraph([]);
+
+  const report = diffApiSurface(base, head);
+
+  assert.equal(report.summary.removed, 1, "padded should be the only counted export");
+  assert.equal(report.removed[0].name, "padded", "trim() result should be stored");
+  assert.ok(!report.removedFiles.includes(""), "empty-path file should be skipped, not surface in removedFiles");
+});
+
+test("diffApiSurface marks same-file same-name duplicate exports with conflicting symbol types", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts", label: "a.ts" },
+      { id: "symbol:src/a.ts:doThing:fn", type: "function", label: "doThing", path: "src/a.ts" },
+      { id: "symbol:src/a.ts:doThing:cls", type: "class", label: "doThing", path: "src/a.ts" }
+    ],
+    edges: [
+      { id: "e1", type: "exports", from: "file:src/a.ts", to: "symbol:src/a.ts:doThing:fn", exportedName: "doThing" },
+      { id: "e2", type: "exports", from: "file:src/a.ts", to: "symbol:src/a.ts:doThing:cls", exportedName: "doThing" }
+    ]
+  };
+
+  // Self-diff to inspect surface collection: both base and head see one entry with conflict=true.
+  const report = diffApiSurface(graph, graph);
+  assert.equal(report.summary.added, 0);
+  assert.equal(report.summary.removed, 0);
+  assert.equal(report.summary.changed, 0);
+
+  // Asymmetric diff: same conflict on base, head has only the function form. The classification
+  // should still see them as the "same" export (no false removal of the class form).
+  const headOnlyFn = {
+    ...graph,
+    edges: [graph.edges[0]]
+  };
+  const asymmetric = diffApiSurface(graph, headOnlyFn);
+  assert.equal(asymmetric.summary.removed, 0, "duplicate-collapsed exports should not produce a phantom removal");
+});
+
 test("diffApiSurface throws on malformed input", () => {
   const good = buildExportGraph([]);
   assert.throws(() => diffApiSurface(null, good), /baseGraph must be a RepoGraph/);
