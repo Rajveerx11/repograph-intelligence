@@ -7,13 +7,17 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   analyzeRepository,
   analyzeSupplyChain,
+  applyCoverageToGraph,
   compileGlob,
   diffApiSurface,
   evaluatePolicy,
+  loadLcov,
   loadPolicy,
   parseCargoDependencies,
+  parseLcov,
   parsePyprojectDependencies,
   parseRequirements,
+  rankByCoverageRisk,
   toMermaid,
   validatePolicy
 } from "../packages/core/src/index.js";
@@ -554,6 +558,155 @@ test("diffApiSurface marks same-file same-name duplicate exports with conflictin
   };
   const asymmetric = diffApiSurface(graph, headOnlyFn);
   assert.equal(asymmetric.summary.removed, 0, "duplicate-collapsed exports should not produce a phantom removal");
+});
+
+const sampleLcov = [
+  "TN:",
+  "SF:src/a.ts",
+  "FN:5,doThing",
+  "FNDA:1,doThing",
+  "FNF:2",
+  "FNH:1",
+  "DA:1,1",
+  "DA:2,1",
+  "DA:3,0",
+  "DA:4,0",
+  "LF:4",
+  "LH:2",
+  "BRF:2",
+  "BRH:1",
+  "end_of_record",
+  "SF:src/b.ts",
+  "FNF:1",
+  "FNH:1",
+  "LF:10",
+  "LH:10",
+  "BRF:0",
+  "BRH:0",
+  "end_of_record",
+  ""
+].join("\n");
+
+test("parseLcov returns per-file coverage percentages and aggregate totals", () => {
+  const report = parseLcov(sampleLcov);
+
+  assert.equal(report.files.length, 2);
+  const fileA = report.files.find((file) => file.path === "src/a.ts");
+  assert.equal(fileA.lineCoverage, 50, "50% of 4 lines hit");
+  assert.equal(fileA.branchCoverage, 50);
+  assert.equal(fileA.functionCoverage, 50);
+
+  const fileB = report.files.find((file) => file.path === "src/b.ts");
+  assert.equal(fileB.lineCoverage, 100);
+  assert.equal(fileB.branchCoverage, null, "0 branches should yield null, not divide-by-zero");
+
+  assert.equal(report.totals.linesFound, 14);
+  assert.equal(report.totals.linesHit, 12);
+  assert.equal(report.totals.lineCoverage, Math.round((12 / 14) * 10000) / 100);
+});
+
+test("parseLcov ignores malformed lines and rejects non-string input", () => {
+  const report = parseLcov("noise without tags\nSF:x\nLF:5\nLH:3\nend_of_record\n");
+  assert.equal(report.files.length, 1);
+  assert.equal(report.files[0].lineCoverage, 60);
+
+  assert.throws(() => parseLcov(null), /string LCOV source/);
+});
+
+test("applyCoverageToGraph matches exact, suffix, and basename-only paths", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts", label: "a.ts" },
+      { id: "file:src/c.ts", type: "file", path: "src/c.ts", label: "c.ts" },
+      { id: "file:src/uncovered.ts", type: "file", path: "src/uncovered.ts", label: "uncovered.ts" }
+    ],
+    edges: []
+  };
+  const coverage = parseLcov([
+    "SF:./src/a.ts",
+    "LF:4", "LH:2",
+    "end_of_record",
+    "SF:tests/c.ts",
+    "LF:5", "LH:5",
+    "end_of_record",
+    ""
+  ].join("\n"));
+
+  const { graph: enriched, matchReport } = applyCoverageToGraph(graph, coverage);
+
+  const fileA = enriched.nodes.find((node) => node.id === "file:src/a.ts");
+  const fileC = enriched.nodes.find((node) => node.id === "file:src/c.ts");
+  const fileUncovered = enriched.nodes.find((node) => node.id === "file:src/uncovered.ts");
+
+  assert.equal(fileA.coverage.lineCoverage, 50, "leading-dot prefix should match exactly after normalize");
+  assert.equal(fileC.coverage.lineCoverage, 100, "tests/c.ts vs src/c.ts should fall through to basename match");
+  assert.equal(fileC.coverage.weakMatch, true, "basename-only match should be marked weak");
+  assert.equal(fileUncovered.coverage, null);
+  assert.equal(matchReport.matched, 2);
+  assert.equal(matchReport.unmatchedGraph, 1);
+});
+
+test("applyCoverageToGraph honors allowBasenameMatch=false", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [{ id: "file:src/c.ts", type: "file", path: "src/c.ts", label: "c.ts" }],
+    edges: []
+  };
+  const coverage = parseLcov(["SF:tests/c.ts", "LF:5", "LH:5", "end_of_record", ""].join("\n"));
+
+  const { graph: enriched, matchReport } = applyCoverageToGraph(graph, coverage, { allowBasenameMatch: false });
+
+  assert.equal(enriched.nodes[0].coverage, null);
+  assert.equal(matchReport.matched, 0);
+});
+
+test("rankByCoverageRisk surfaces high-risk low-coverage files and respects threshold", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/hot.ts", type: "file", path: "src/hot.ts", label: "hot.ts" },
+      { id: "file:src/cold.ts", type: "file", path: "src/cold.ts", label: "cold.ts" },
+      { id: "file:src/dep.ts", type: "file", path: "src/dep.ts", label: "dep.ts" },
+      { id: "package:react", type: "package", label: "react" }
+    ],
+    edges: [
+      { id: "i1", type: "imports", from: "file:src/hot.ts", to: "file:src/dep.ts", scope: "internal" },
+      { id: "i2", type: "imports", from: "file:src/cold.ts", to: "file:src/dep.ts", scope: "internal" },
+      { id: "d1", type: "dependency", from: "file:src/hot.ts", to: "package:react", scope: "external" }
+    ]
+  };
+  const coverage = parseLcov([
+    "SF:src/hot.ts", "LF:10", "LH:2", "end_of_record",
+    "SF:src/cold.ts", "LF:10", "LH:9", "end_of_record",
+    "SF:src/dep.ts", "LF:10", "LH:0", "end_of_record",
+    ""
+  ].join("\n"));
+
+  const ranking = rankByCoverageRisk(graph, coverage, { coverageThreshold: 80, limit: 10 });
+
+  assert.ok(ranking.rows.length > 0);
+  assert.ok(!ranking.rows.some((row) => row.path === "src/cold.ts"), "90%-covered file should be filtered above threshold");
+  const top = ranking.rows[0];
+  assert.equal(top.path, "src/dep.ts", "dep.ts has highest fan-in and 0% coverage");
+  assert.ok(top.priority > 0);
+});
+
+test("loadLcov reads disk content and propagates parse output", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "repograph-lcov-"));
+  const lcovPath = path.join(dir, "coverage.info");
+  await writeFile(lcovPath, sampleLcov, "utf8");
+
+  const report = await loadLcov(lcovPath);
+  assert.equal(report.files.length, 2);
+
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("diffApiSurface throws on malformed input", () => {

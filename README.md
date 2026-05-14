@@ -48,6 +48,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
 - Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
+- Overlays LCOV test coverage onto file nodes via `repograph coverage` — parses Istanbul/c8/pytest-cov/jacoco tracefiles, attaches line/branch/function percentages per file, and (with `--rank`) emits a priority list combining `scoreDependencyRisk` with inverse coverage so high-risk low-coverage files surface first
 - Compares two graph snapshots and reports public-API surface changes via `repograph api-diff` — every exported symbol classified as added, removed, or changed (symbol-kind transition such as `function` → `class`), with optional `--fail-on-breaking` for release gates
 - Exports the dependency graph as a Mermaid flowchart (`repograph mermaid`) that renders inline in GitHub READMEs, GitLab, Notion, and most Markdown viewers, with options for direction, node-type filters, symbol/contain edges, and explicit caps for monorepo-friendly truncation
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
@@ -287,6 +288,14 @@ npm run repograph -- policy ./repo --policy .repograph/policy.json --fail-on war
 
 Policy files are JSON with five v1 rule types: `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines`. Globs accept `**`, `*`, and `?`. Each rule carries a severity (`info`, `warning`, `error`; default `error`). The CLI exits with status `2` when any violation meets the `--fail-on` threshold so CI can gate merges on structural invariants. See [`examples/policy.example.json`](examples/policy.example.json) for a starter file.
 
+Overlay LCOV test coverage data onto the dependency graph and rank high-risk low-coverage files for prioritized review:
+
+```bash
+npm run repograph -- coverage ./repo --lcov coverage/lcov.info --rank --limit 20
+```
+
+The parser handles Istanbul, c8, pytest-cov, and jacoco-style LCOV. Path matching tries exact, then suffix, then basename-only (the last is flagged with `weakMatch: true` so consumers can warn). `--rank` produces a priority list combining `scoreDependencyRisk` with the inverse line coverage; files at or above `--coverage-threshold` (default 80%) are excluded from the ranking so the tail of the list stays focused on real risk.
+
 Compare two graph snapshots and report changes to the public API surface — every exported symbol classified as added, removed, or changed:
 
 ```bash
@@ -371,6 +380,7 @@ The server exposes these tools:
 | `repograph_mermaid` | Export the dependency graph as a Mermaid flowchart for Markdown viewers |
 | `repograph_policy` | Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) and return a pass/fail report |
 | `repograph_api_diff` | Compare two RepoGraph snapshots and report added, removed, and changed public-API exports |
+| `repograph_coverage` | Overlay LCOV coverage on file nodes and optionally rank files by combined risk and low coverage |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |

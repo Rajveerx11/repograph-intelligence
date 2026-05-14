@@ -13,9 +13,12 @@ import {
   createGuidanceReport,
   createGraphSnapshot,
   inferOwnership,
+  applyCoverageToGraph,
   diffApiSurface,
   evaluatePolicy,
   loadPolicy,
+  parseLcov,
+  rankByCoverageRisk,
   recommendArchitecture,
   semanticSearch,
   summarizeRepository,
@@ -192,6 +195,21 @@ const tools = [
         online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
       },
       required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_coverage",
+    description: "Overlay LCOV test coverage onto the repository graph and optionally rank files by combined risk and low coverage. Accepts the LCOV payload inline.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze." },
+        lcov: { type: "string", description: "Raw LCOV tracefile content." },
+        rank: { type: "boolean", description: "Return a ranked list combining risk score with inverse coverage." },
+        limit: { type: "number", description: "Maximum rows in the ranking (1-500)." },
+        coverageThreshold: { type: "number", description: "Files at or above this line-coverage percent (0-100) are excluded from the ranking." }
+      },
+      required: ["repoPath", "lcov"]
     }
   },
   {
@@ -442,6 +460,27 @@ async function callTool(name, args) {
     const baseGraph = requireObject(args.baseGraph, "baseGraph");
     const headGraph = requireObject(args.headGraph, "headGraph");
     return diffApiSurface(baseGraph, headGraph);
+  }
+  if (name === "repograph_coverage") {
+    const graph = await analyzeRepository(requireRepoPath(args));
+    const lcovText = requireString(args.lcov, "lcov");
+    if (lcovText.length > 25 * 1024 * 1024) {
+      throw new Error("lcov payload exceeds 25 MB limit.");
+    }
+    const coverageReport = parseLcov(lcovText);
+    if (args.rank === true) {
+      return rankByCoverageRisk(graph, coverageReport, {
+        limit: boundedLimit(args.limit, 20, 500),
+        coverageThreshold: boundedLimit(args.coverageThreshold, 80, 100)
+      });
+    }
+    const { graph: enriched, matchReport } = applyCoverageToGraph(graph, coverageReport);
+    return {
+      matchReport,
+      files: enriched.nodes
+        .filter((node) => node.type === "file")
+        .map((node) => ({ path: node.path, coverage: node.coverage }))
+    };
   }
   if (name === "repograph_policy") {
     const graph = await analyzeRepository(requireRepoPath(args));
