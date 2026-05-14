@@ -13,6 +13,7 @@ import {
   createGuidanceReport,
   createGraphSnapshot,
   inferOwnership,
+  diffApiSurface,
   evaluatePolicy,
   loadPolicy,
   recommendArchitecture,
@@ -191,6 +192,18 @@ const tools = [
         online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
       },
       required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_api_diff",
+    description: "Compare two RepoGraph snapshots and report added, removed, and changed public-API exports. Useful for PR reviews and release-notes generation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        baseGraph: { type: "object", description: "Baseline graph (RepoGraph JSON) — the 'before' state." },
+        headGraph: { type: "object", description: "Head graph (RepoGraph JSON) — the 'after' state." }
+      },
+      required: ["baseGraph", "headGraph"]
     }
   },
   {
@@ -424,6 +437,11 @@ async function callTool(name, args) {
     return analyzeSupplyChain(requireRepoPath(args), {
       online: args.online === true
     });
+  }
+  if (name === "repograph_api_diff") {
+    const baseGraph = requireObject(args.baseGraph, "baseGraph");
+    const headGraph = requireObject(args.headGraph, "headGraph");
+    return diffApiSurface(baseGraph, headGraph);
   }
   if (name === "repograph_policy") {
     const graph = await analyzeRepository(requireRepoPath(args));

@@ -35,5 +35,6 @@ export { buildSemanticIndex, semanticSearch } from "./semantic.js";
 export { compressContext, summarizeRepository } from "./summaries.js";
 export { toMermaid } from "./mermaid.js";
 export { compileGlob, evaluatePolicy, loadPolicy, validatePolicy } from "./policy.js";
+export { diffApiSurface } from "./api-diff.js";
 export { loadGraph, saveGraph } from "./storage.js";
 export { startWatch } from "./watch.js";

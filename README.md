@@ -48,6 +48,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
 - Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
+- Compares two graph snapshots and reports public-API surface changes via `repograph api-diff` — every exported symbol classified as added, removed, or changed (symbol-kind transition such as `function` → `class`), with optional `--fail-on-breaking` for release gates
 - Exports the dependency graph as a Mermaid flowchart (`repograph mermaid`) that renders inline in GitHub READMEs, GitLab, Notion, and most Markdown viewers, with options for direction, node-type filters, symbol/contain edges, and explicit caps for monorepo-friendly truncation
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
 - Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds and auto-refreshes the visible graph when the watcher rebuilds
@@ -286,6 +287,14 @@ npm run repograph -- policy ./repo --policy .repograph/policy.json --fail-on war
 
 Policy files are JSON with five v1 rule types: `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines`. Globs accept `**`, `*`, and `?`. Each rule carries a severity (`info`, `warning`, `error`; default `error`). The CLI exits with status `2` when any violation meets the `--fail-on` threshold so CI can gate merges on structural invariants. See [`examples/policy.example.json`](examples/policy.example.json) for a starter file.
 
+Compare two graph snapshots and report changes to the public API surface — every exported symbol classified as added, removed, or changed:
+
+```bash
+npm run repograph -- api-diff --base baseline.json --head current.json --fail-on-breaking
+```
+
+Useful for PR review automation and release-notes generation. The diff identifies `(filePath, exportedName)` pairs and reports a per-file summary, an overall summary with a `breaking` count (removed + changed), and dedicated lists for files whose exports appeared or disappeared entirely. With `--fail-on-breaking` the CLI exits with status `3` when the breaking count is non-zero so CI can gate releases on API stability.
+
 The watcher collapses bursts of file changes inside a debounce window, emits structured events for tooling, and writes the latest graph back to disk. Press `Ctrl+C` to stop.
 
 Start the MCP server:
@@ -361,6 +370,7 @@ The server exposes these tools:
 | `repograph_recommend` | Generate architecture improvement recommendations |
 | `repograph_mermaid` | Export the dependency graph as a Mermaid flowchart for Markdown viewers |
 | `repograph_policy` | Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) and return a pass/fail report |
+| `repograph_api_diff` | Compare two RepoGraph snapshots and report added, removed, and changed public-API exports |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |

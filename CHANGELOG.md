@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **API Surface Diff** — new `diffApiSurface(baseGraph, headGraph, options)` core function compares two RepoGraph snapshots and classifies every exported symbol as added, removed, or changed (when the underlying symbol kind transitions, e.g., `function` → `class`). Reports per-file groupings, lists of files whose entire export set appeared or disappeared, and an aggregate `breaking` count (removed + changed). Exposed via the `repograph api-diff` CLI command (with optional `--fail-on-breaking` that exits with status `3`) and the `repograph_api_diff` MCP tool. Foundation for PR-review automation and release-notes generation.
 - **Architecture Policy as Code** — new `packages/core/src/policy.js` engine with five v1 rule types (`forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, `max-lines`), per-rule severity (`info`/`warning`/`error`), and a glob matcher (`**`, `*`, `?`) used to scope rules to subtrees. Exposed via the `repograph policy` CLI command (exits non-zero on violations meeting `--fail-on` threshold), the `repograph_policy` MCP tool (accepts inline `policy` or `policyPath`), and a sample [`examples/policy.example.json`](examples/policy.example.json).
 - **Project picker in the web explorer** — header input + `Open Project` button that switches the analyzed repository at runtime. Server analyzes the new root synchronously and returns the graph in the response so the visualization swaps immediately.
 - **Live graph refetch via SSE** — when the watcher rebuilds, the explorer pulls the latest graph via a new `GET /api/graph` endpoint and re-renders. Sequence-counted on the client to drop out-of-order responses.
@@ -33,11 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- Test count moves from 24 → 38 across the work since `0.1.0`:
+- Test count moves from 24 → 43 across the work since `0.1.0`:
   - 5 unit tests for `toMermaid` (default render, option matrix, truncation annotation, label escaping, malformed input)
   - 1 additional Mermaid escaping test covering pipes, backticks, and braces
   - 2 MCP integration tests for `repograph_mermaid` (tool advertisement, invalid-direction error)
   - 6 tests for the policy engine covering glob matcher semantics, schema validation, violation detection across all five rule types, cycle deduplication within scope, `failOn` threshold behavior, and on-disk `.json` policy loading
+  - 5 tests for `diffApiSurface` covering classification across added/removed/changed, whole-file appearance/disappearance, per-file grouping, identical-graph short-circuit with `includeFileSummary: false`, and malformed input rejection
 
 ## [0.1.0] - 2026-05-01
 
