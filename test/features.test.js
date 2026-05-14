@@ -256,6 +256,41 @@ test("toDot throws on missing or malformed graphs", () => {
   assert.throws(() => toDot({ nodes: [], edges: "nope" }), /requires a graph/);
 });
 
+test("toDot renders symbol and module nodes when includeSymbols and includeContains are set", () => {
+  const dot = toDot(mermaidFixtureGraph, {
+    includeSymbols: true,
+    includePackages: false,
+    includeContains: true
+  });
+
+  assert.match(dot, /doThing/, "symbol nodes should appear when includeSymbols=true");
+  assert.match(dot, /fillcolor="#dcfce7"/, "function/method/class symbols should use the green palette");
+  assert.ok(!dot.includes("express"), "package nodes should be omitted when includePackages=false");
+  assert.match(dot, /arrowhead=none/, "contains edges should render with the undirected arrow style when includeContains=true");
+});
+
+test("toDot encodes export and reference edge types with their distinct styles", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts", label: "a.ts" },
+      { id: "file:src/b.ts", type: "file", path: "src/b.ts", label: "b.ts" },
+      { id: "file:src/c.ts", type: "file", path: "src/c.ts", label: "c.ts" }
+    ],
+    edges: [
+      { id: "e1", type: "exports", from: "file:src/a.ts", to: "file:src/b.ts", scope: "internal" },
+      { id: "e2", type: "references", from: "file:src/a.ts", to: "file:src/c.ts", scope: "internal" }
+    ]
+  };
+
+  const dot = toDot(graph, { includeContains: true });
+
+  assert.match(dot, /penwidth=2, color="#16a34a"/, "exports edges should render in bold green");
+  assert.match(dot, /style=dotted, label="ref"/, "references edges should be dotted with a ref label");
+});
+
 async function waitFor(predicate, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

@@ -649,7 +649,10 @@ function optionalRankdir(value) {
   if (!["LR", "TB", "TD", "RL", "BT"].includes(upper)) {
     throw new Error("rankdir must be one of LR, TB, TD, RL, BT.");
   }
-  return upper;
+  // Mirror the normalisation `toDot` applies internally so the response
+  // metadata never disagrees with the rendered DOT output (e.g. user
+  // requests `TD`, DOT emits `rankdir=TB`, response should say `TB` too).
+  return upper === "TD" ? "TB" : upper;
 }
 
 function optionalDirection(value) {
