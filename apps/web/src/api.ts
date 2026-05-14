@@ -55,6 +55,19 @@ export async function fetchCurrentGraph(): Promise<RepoGraph | null> {
   return data.graph ?? null;
 }
 
+export async function exportGraph(format: "mermaid" | "dot"): Promise<{ content: string; filename: string }> {
+  const response = await fetch("/api/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format, direction: "LR", maxNodes: 200, maxEdges: 400 })
+  });
+  const result = await response.json() as { content?: string; filename?: string; error?: string };
+  if (!response.ok || "error" in result) {
+    throw new Error(result.error ?? "Export failed.");
+  }
+  return { content: result.content ?? "", filename: result.filename ?? `repograph.${format === "mermaid" ? "mmd" : "dot"}` };
+}
+
 export function findGraphNode(graph: RepoGraph, id: string) {
   return graph.nodes.find((node) => node.id === id) ?? null;
 }

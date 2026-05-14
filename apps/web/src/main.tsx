@@ -4,7 +4,7 @@ import ReactFlow, { Background, Controls, MiniMap } from "reactflow";
 import "reactflow/dist/style.css";
 import "./styles.css";
 import type { RepoGraph, RepoGraphNode } from "@repograph/shared-types";
-import { fetchCurrentGraph, fetchCurrentRoot, findGraphNode, formatPayload, runRepoAction, setProjectRoot } from "./api";
+import { exportGraph, fetchCurrentGraph, fetchCurrentRoot, findGraphNode, formatPayload, runRepoAction, setProjectRoot } from "./api";
 import { ACTIONS, FILTERS, MAX_GRAPH_FILE_BYTES, SAMPLE_GRAPH } from "./constants";
 import {
   filterGraph,
@@ -43,6 +43,52 @@ function App() {
     files: null,
     changedFiles: null
   });
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    try {
+      const stored = localStorage.getItem("repograph-theme");
+      if (stored === "light" || stored === "dark") {
+        return stored;
+      }
+      if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch {
+      // localStorage may be unavailable (private mode, file://, etc.).
+    }
+    return "light";
+  });
+  const [exporting, setExporting] = useState<"mermaid" | "dot" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("repograph-theme", theme);
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [theme]);
+
+  async function handleExport(format: "mermaid" | "dot") {
+    setExporting(format);
+    setExportError(null);
+    try {
+      const { content, filename } = await exportGraph(format);
+      const blob = new Blob([content], { type: format === "mermaid" ? "text/plain;charset=utf-8" : "text/vnd.graphviz" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      setExporting(null);
+    }
+  }
 
   useEffect(() => {
     fetchCurrentRoot().then((root) => {
@@ -232,7 +278,35 @@ function App() {
               onChange={(event) => loadGraphFile(event, setGraph, setLoadError, setActionResult)}
             />
           </label>
+          <button
+            type="button"
+            className="export-button"
+            disabled={exporting !== null}
+            onClick={() => handleExport("mermaid")}
+            title="Download the current graph as a Mermaid flowchart (.mmd)"
+          >
+            {exporting === "mermaid" ? "..." : "Export Mermaid"}
+          </button>
+          <button
+            type="button"
+            className="export-button"
+            disabled={exporting !== null}
+            onClick={() => handleExport("dot")}
+            title="Download the current graph as GraphViz DOT (.dot)"
+          >
+            {exporting === "dot" ? "..." : "Export DOT"}
+          </button>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+            aria-label="Toggle dark mode"
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
         </div>
+        {exportError ? <p className="export-error">{exportError}</p> : null}
       </header>
 
       <section className="workspace-grid">
