@@ -74,7 +74,10 @@ function App() {
     setExportError(null);
     try {
       const { content, filename } = await exportGraph(format);
-      const blob = new Blob([content], { type: format === "mermaid" ? "text/plain;charset=utf-8" : "text/vnd.graphviz" });
+      // Use `text/plain` for both formats: Mermaid and DOT are plain text and
+      // the non-standard `text/vnd.graphviz` MIME confuses some browsers into
+      // treating the download as an unknown binary type.
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -82,11 +85,17 @@ function App() {
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
+      // Defer the revoke so Firefox's download machinery has a tick to read
+      // the blob — revoking synchronously can win the race in some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "Export failed.");
     } finally {
-      setExporting(null);
+      // Only clear if this completion still represents the in-flight export.
+      // The disabled state on both buttons already prevents overlap, but a
+      // functional setter keeps the contract correct under any future
+      // refactor that lifts the guard.
+      setExporting((current) => (current === format ? null : current));
     }
   }
 
