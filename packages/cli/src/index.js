@@ -213,7 +213,9 @@ async function apiDiffCommand(args) {
   }
   const baseGraph = await loadGraph(options.base);
   const headGraph = await loadGraph(options.head);
-  const report = diffApiSurface(baseGraph, headGraph);
+  const report = diffApiSurface(baseGraph, headGraph, {
+    includeFileSummary: options["no-by-file"] !== true
+  });
   const failOnBreaking = options["fail-on-breaking"] === true;
 
   if (options.out) {
@@ -891,6 +893,10 @@ function parseTargetAndOptions(args) {
       options["fail-on-breaking"] = true;
       continue;
     }
+    if (arg === "--no-by-file") {
+      options["no-by-file"] = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1123,7 +1129,7 @@ Usage:
   repograph watch [repo] [--out path] [--debounce ms]
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
-  repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking]
+  repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
   repograph mcp
 
 Commands:

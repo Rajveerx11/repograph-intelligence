@@ -119,19 +119,34 @@ function collectApiSurface(graph, label) {
     if (!fromNode || fromNode.type !== "file") {
       continue;
     }
-    const exportedName = typeof edge.exportedName === "string" && edge.exportedName.trim()
-      ? edge.exportedName
-      : toNode?.label;
-    if (!exportedName) {
+    const rawName = typeof edge.exportedName === "string" && edge.exportedName.trim()
+      ? edge.exportedName.trim()
+      : typeof toNode?.label === "string"
+        ? toNode.label.trim()
+        : "";
+    if (!rawName) {
       continue;
     }
-    const path = fromNode.path ?? fromNode.label ?? fromNode.id;
-    const symbolType = toNode?.type ?? "unknown";
-    const key = `${path}::${exportedName}`;
-    if (!entries.has(key)) {
-      entries.set(key, { path, name: exportedName, type: symbolType });
-      filesWithExports.add(path);
+    const rawPath = (typeof fromNode.path === "string" && fromNode.path.trim())
+      || (typeof fromNode.label === "string" && fromNode.label.trim())
+      || "";
+    if (!rawPath) {
+      continue;
     }
+    const symbolType = toNode?.type ?? "unknown";
+    const key = `${rawPath}::${rawName}`;
+    if (entries.has(key)) {
+      const existing = entries.get(key);
+      if (existing.type !== symbolType) {
+        // Two edges export the same name from the same file with different
+        // symbol kinds. Keep the first deterministically but mark the entry
+        // so downstream consumers (and tests) can see the conflict.
+        existing.conflict = true;
+      }
+      continue;
+    }
+    entries.set(key, { path: rawPath, name: rawName, type: symbolType });
+    filesWithExports.add(rawPath);
   }
 
   return { entries, files: filesWithExports };
