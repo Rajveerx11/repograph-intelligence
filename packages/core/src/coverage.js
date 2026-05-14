@@ -290,6 +290,16 @@ function normalizePath(value) {
   return str.replace(/^\.\//, "");
 }
 
+/**
+ * Priority = riskScore × coverageGap, where coverageGap is the percentage
+ * of uncovered lines. A file with no LCOV entry is treated identically to
+ * a file with 0% line coverage (coverageGap = 100). This is intentional:
+ * source files that are not exercised by any test should be elevated to
+ * the top of a "files to write tests for" list. Test files themselves
+ * typically do not appear as file nodes in a RepoGraph (they live under
+ * `test/` and are filtered by the scanner), so this rule does not cause
+ * the tests-themselves false-positive class.
+ */
 function computePriority(riskScore, lineCoverage) {
   const coverageGap = lineCoverage === null ? 100 : Math.max(0, 100 - lineCoverage);
   return Math.round((riskScore * coverageGap) * 100) / 100;

@@ -698,6 +698,53 @@ test("rankByCoverageRisk surfaces high-risk low-coverage files and respects thre
   assert.ok(top.priority > 0);
 });
 
+test("applyCoverageToGraph rejects ambiguous basename matches by leaving the file unmatched", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [{ id: "file:src/index.ts", type: "file", path: "src/index.ts", label: "index.ts" }],
+    edges: []
+  };
+  const coverage = parseLcov([
+    "SF:packages/a/index.ts", "LF:5", "LH:5", "end_of_record",
+    "SF:packages/b/index.ts", "LF:5", "LH:0", "end_of_record",
+    ""
+  ].join("\n"));
+
+  const { graph: enriched, matchReport } = applyCoverageToGraph(graph, coverage);
+
+  assert.equal(enriched.nodes[0].coverage, null, "two same-basename candidates should not collapse to either one");
+  assert.equal(matchReport.matched, 0);
+});
+
+test("rankByCoverageRisk elevates graph files that have no LCOV entry alongside true 0%-coverage files", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/hot.ts", type: "file", path: "src/hot.ts", label: "hot.ts" },
+      { id: "file:src/missing.ts", type: "file", path: "src/missing.ts", label: "missing.ts" },
+      { id: "file:src/dep.ts", type: "file", path: "src/dep.ts", label: "dep.ts" }
+    ],
+    edges: [
+      { id: "i1", type: "imports", from: "file:src/hot.ts", to: "file:src/dep.ts", scope: "internal" },
+      { id: "i2", type: "imports", from: "file:src/missing.ts", to: "file:src/dep.ts", scope: "internal" }
+    ]
+  };
+  // Only hot.ts has LCOV data (0% covered); missing.ts has no LCOV entry at all.
+  const coverage = parseLcov(["SF:src/hot.ts", "LF:10", "LH:0", "end_of_record", ""].join("\n"));
+
+  const ranking = rankByCoverageRisk(graph, coverage, { coverageThreshold: 80, limit: 10 });
+
+  const missingRow = ranking.rows.find((row) => row.path === "src/missing.ts");
+  assert.ok(missingRow, "graph files with no LCOV entry should appear in the ranking, not silently disappear");
+  assert.equal(missingRow.hasCoverage, false);
+  assert.equal(missingRow.lineCoverage, null);
+  assert.ok(missingRow.priority > 0, "files with no coverage and positive risk should get a positive priority");
+});
+
 test("loadLcov reads disk content and propagates parse output", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "repograph-lcov-"));
   const lcovPath = path.join(dir, "coverage.info");

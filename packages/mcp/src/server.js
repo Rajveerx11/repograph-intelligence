@@ -199,12 +199,12 @@ const tools = [
   },
   {
     name: "repograph_coverage",
-    description: "Overlay LCOV test coverage onto the repository graph and optionally rank files by combined risk and low coverage. Accepts the LCOV payload inline.",
+    description: "Overlay LCOV test coverage onto the repository graph and optionally rank files by combined risk and low coverage. The LCOV payload is passed inline; the MCP JSON-RPC envelope caps requests at 1 MB, so for larger tracefiles use the `repograph coverage` CLI which reads from disk with a 10 MB default cap.",
     inputSchema: {
       type: "object",
       properties: {
         repoPath: { type: "string", description: "Repository path to analyze." },
-        lcov: { type: "string", description: "Raw LCOV tracefile content." },
+        lcov: { type: "string", description: "Raw LCOV tracefile content (capped by the 1 MB MCP envelope)." },
         rank: { type: "boolean", description: "Return a ranked list combining risk score with inverse coverage." },
         limit: { type: "number", description: "Maximum rows in the ranking (1-500)." },
         coverageThreshold: { type: "number", description: "Files at or above this line-coverage percent (0-100) are excluded from the ranking." }
@@ -464,9 +464,11 @@ async function callTool(name, args) {
   if (name === "repograph_coverage") {
     const graph = await analyzeRepository(requireRepoPath(args));
     const lcovText = requireString(args.lcov, "lcov");
-    if (lcovText.length > 25 * 1024 * 1024) {
-      throw new Error("lcov payload exceeds 25 MB limit.");
-    }
+    // The MCP transport already enforces MAX_MESSAGE_BYTES on the JSON-RPC
+    // envelope (1 MB by default) so any in-message payload size check here
+    // would be unreachable. Agents that need to overlay coverage from a
+    // larger tracefile should call the CLI (`repograph coverage --lcov`)
+    // which uses the disk loader with a 10 MB default cap.
     const coverageReport = parseLcov(lcovText);
     if (args.rank === true) {
       return rankByCoverageRisk(graph, coverageReport, {
