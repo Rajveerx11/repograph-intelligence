@@ -927,3 +927,38 @@ body {
 [data-theme="dark"] .live-status {
   color: #94a3b8;
 }
+
+/* React Flow control/minimap surfaces in dark mode */
+[data-theme="dark"] .react-flow__minimap {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+}
+
+[data-theme="dark"] .react-flow__minimap-mask {
+  fill: rgba(8, 12, 24, 0.5);
+}
+
+[data-theme="dark"] .react-flow__controls {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .react-flow__controls button {
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  border-bottom-color: rgba(71, 85, 105, 0.42);
+  fill: #e2e8f0;
+}
+
+[data-theme="dark"] .react-flow__controls button:hover {
+  background: rgba(30, 41, 59, 0.95);
+}
+
+[data-theme="dark"] .react-flow__background {
+  background-color: #060b18;
+}
+
+[data-theme="dark"] .react-flow__edge-path {
+  stroke: #64748b;
+}
