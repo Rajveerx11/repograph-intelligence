@@ -305,6 +305,10 @@ repograph mermaid ./repo --out diagram.mmd
 
 Convert any analyzed graph into a Mermaid flowchart that renders inline in GitHub, GitLab, Notion, and most Markdown viewers. Exposed both via the CLI (`repograph mermaid`) and the MCP tool `repograph_mermaid` so AI agents can request a paste-ready architecture diagram in the same conversation they use for analysis or context retrieval. Node labels are sanitized against parse-significant Mermaid characters; deterministic alias IDs make the output diff-friendly for CI drift detection.
 
+#### 11.10 API Surface Diff
+
+Compare two graph snapshots and classify every exported symbol as added, removed, or changed (a "changed" classification covers symbol-kind transitions such as `function` → `class`; richer signature awareness is on the v2 roadmap). The `repograph api-diff` CLI command and the `repograph_api_diff` MCP tool produce a structured report with per-file groupings, an aggregate `breaking` count, and dedicated lists of files whose export sets appeared or disappeared entirely. The CLI exits with status `3` when `--fail-on-breaking` is set and the breaking count is non-zero, enabling release-gate automation. PR bots can ingest the JSON report directly to generate human-readable change summaries.
+
 #### 11.9 Architecture Policy as Code
 
 Declarative `.repograph/policy.json` files express structural invariants — forbidden imports, forbidden external dependencies, scoped cycle prohibitions, fan-in/fan-out caps, and file-size limits — that the engine enforces against the analyzed graph. The `repograph policy` CLI command and the `repograph_policy` MCP tool produce a structured pass/fail report; the CLI exits with a non-zero status when violations meet the configured `--fail-on` threshold so CI can gate merges on architectural drift. Glob matching supports `**`, `*`, and `?`; severities (`info`, `warning`, `error`) let teams adopt rules incrementally without instantly breaking history.

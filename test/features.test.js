@@ -8,6 +8,7 @@ import {
   analyzeRepository,
   analyzeSupplyChain,
   compileGlob,
+  diffApiSurface,
   evaluatePolicy,
   loadPolicy,
   parseCargoDependencies,
@@ -407,6 +408,101 @@ test("loadPolicy reads, parses, and validates a .json policy file", async () => 
   await assert.rejects(() => loadPolicy(badPath), /must use a \.json extension/);
 
   await rm(dir, { recursive: true, force: true });
+});
+
+function buildExportGraph(spec) {
+  const nodes = [];
+  const edges = [];
+  for (const file of spec) {
+    nodes.push({ id: `file:${file.path}`, type: "file", path: file.path, label: file.path });
+    for (const exp of file.exports) {
+      const symbolId = `symbol:${file.path}:${exp.name}`;
+      nodes.push({ id: symbolId, type: exp.type, label: exp.name, path: file.path });
+      edges.push({
+        id: `exports:file:${file.path}->${symbolId}`,
+        type: "exports",
+        from: `file:${file.path}`,
+        to: symbolId,
+        exportedName: exp.name
+      });
+    }
+  }
+  return { version: 1, generatedAt: "fixture", root: "fixture", nodes, edges };
+}
+
+test("diffApiSurface classifies added, removed, and changed exports", () => {
+  const base = buildExportGraph([
+    { path: "src/a.ts", exports: [{ name: "stay", type: "function" }, { name: "kill", type: "function" }] },
+    { path: "src/b.ts", exports: [{ name: "morph", type: "function" }] }
+  ]);
+  const head = buildExportGraph([
+    { path: "src/a.ts", exports: [{ name: "stay", type: "function" }, { name: "born", type: "function" }] },
+    { path: "src/b.ts", exports: [{ name: "morph", type: "class" }] }
+  ]);
+
+  const report = diffApiSurface(base, head);
+
+  assert.equal(report.summary.added, 1);
+  assert.equal(report.summary.removed, 1);
+  assert.equal(report.summary.changed, 1);
+  assert.equal(report.summary.breaking, 2);
+  assert.deepEqual(report.added.map((entry) => entry.name), ["born"]);
+  assert.deepEqual(report.removed.map((entry) => entry.name), ["kill"]);
+  assert.equal(report.changed[0].baseType, "function");
+  assert.equal(report.changed[0].headType, "class");
+});
+
+test("diffApiSurface flags whole new and deleted files with exports", () => {
+  const base = buildExportGraph([
+    { path: "src/old.ts", exports: [{ name: "x", type: "function" }] }
+  ]);
+  const head = buildExportGraph([
+    { path: "src/new.ts", exports: [{ name: "y", type: "function" }] }
+  ]);
+
+  const report = diffApiSurface(base, head);
+
+  assert.deepEqual(report.addedFiles, ["src/new.ts"]);
+  assert.deepEqual(report.removedFiles, ["src/old.ts"]);
+  assert.equal(report.summary.added, 1);
+  assert.equal(report.summary.removed, 1);
+});
+
+test("diffApiSurface groups violations by file when includeFileSummary is on", () => {
+  const base = buildExportGraph([
+    { path: "src/a.ts", exports: [{ name: "old1", type: "function" }, { name: "old2", type: "function" }] }
+  ]);
+  const head = buildExportGraph([
+    { path: "src/a.ts", exports: [{ name: "new1", type: "function" }] }
+  ]);
+
+  const report = diffApiSurface(base, head);
+
+  assert.equal(report.byFile.length, 1);
+  assert.equal(report.byFile[0].path, "src/a.ts");
+  assert.equal(report.byFile[0].added.length, 1);
+  assert.equal(report.byFile[0].removed.length, 2);
+});
+
+test("diffApiSurface returns empty diff for identical graphs and accepts disabling byFile", () => {
+  const graph = buildExportGraph([
+    { path: "src/a.ts", exports: [{ name: "stay", type: "function" }] }
+  ]);
+
+  const report = diffApiSurface(graph, graph, { includeFileSummary: false });
+
+  assert.equal(report.summary.added, 0);
+  assert.equal(report.summary.removed, 0);
+  assert.equal(report.summary.changed, 0);
+  assert.equal(report.summary.breaking, 0);
+  assert.ok(!("byFile" in report), "byFile should be omitted when includeFileSummary is false");
+});
+
+test("diffApiSurface throws on malformed input", () => {
+  const good = buildExportGraph([]);
+  assert.throws(() => diffApiSurface(null, good), /baseGraph must be a RepoGraph/);
+  assert.throws(() => diffApiSurface(good, {}), /headGraph must be a RepoGraph/);
+  assert.throws(() => diffApiSurface(good, { nodes: [], edges: "no" }), /headGraph must be a RepoGraph/);
 });
 
 test("toMermaid escapes pipes, backticks, and braces in labels to keep flowchart syntax safe", () => {

@@ -5,6 +5,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  diffApiSurface,
   analyzeChangedFiles,
   analyzeImpact,
   analyzeRepositories,
@@ -97,6 +98,8 @@ try {
     await mermaidCommand(args);
   } else if (command === "policy") {
     await policyCommand(args);
+  } else if (command === "api-diff") {
+    await apiDiffCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -201,6 +204,79 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function apiDiffCommand(args) {
+  const { options } = parseTargetAndOptions(args);
+  if (!options.base || !options.head) {
+    throw new Error("api-diff requires both --base <graph.json> and --head <graph.json>");
+  }
+  const baseGraph = await loadGraph(options.base);
+  const headGraph = await loadGraph(options.head);
+  const report = diffApiSurface(baseGraph, headGraph);
+  const failOnBreaking = options["fail-on-breaking"] === true;
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    console.log(`API diff: ${outputPath}`);
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatApiDiffReport(report));
+  }
+
+  if (failOnBreaking && report.summary.breaking > 0) {
+    process.exit(3);
+  }
+}
+
+function formatApiDiffReport(report) {
+  const lines = [];
+  lines.push(`Base exports: ${report.summary.baseExports} across ${report.summary.baseFiles} file(s)`);
+  lines.push(`Head exports: ${report.summary.headExports} across ${report.summary.headFiles} file(s)`);
+  lines.push(`Added: ${report.summary.added}, Removed: ${report.summary.removed}, Changed: ${report.summary.changed}`);
+  lines.push(`Breaking changes (removed + changed): ${report.summary.breaking}`);
+
+  if (report.summary.addedFiles || report.summary.removedFiles) {
+    lines.push("");
+    if (report.summary.addedFiles) {
+      lines.push(`Added files with exports: ${report.summary.addedFiles}`);
+    }
+    if (report.summary.removedFiles) {
+      lines.push(`Removed files with exports: ${report.summary.removedFiles}`);
+    }
+  }
+
+  if (report.added.length) {
+    lines.push("");
+    lines.push("## Added");
+    for (const entry of report.added) {
+      lines.push(`+ ${entry.path}: ${entry.name} (${entry.type})`);
+    }
+  }
+  if (report.removed.length) {
+    lines.push("");
+    lines.push("## Removed (breaking)");
+    for (const entry of report.removed) {
+      lines.push(`- ${entry.path}: ${entry.name} (${entry.type})`);
+    }
+  }
+  if (report.changed.length) {
+    lines.push("");
+    lines.push("## Changed (potentially breaking)");
+    for (const entry of report.changed) {
+      lines.push(`~ ${entry.path}: ${entry.name} (${entry.baseType} -> ${entry.headType})`);
+    }
+  }
+  if (!report.added.length && !report.removed.length && !report.changed.length) {
+    lines.push("");
+    lines.push("No API surface changes.");
+  }
+  return lines.join("\n");
 }
 
 async function policyCommand(args) {
@@ -811,6 +887,10 @@ function parseTargetAndOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === "--fail-on-breaking") {
+      options["fail-on-breaking"] = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1043,6 +1123,7 @@ Usage:
   repograph watch [repo] [--out path] [--debounce ms]
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
+  repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking]
   repograph mcp
 
 Commands:
@@ -1071,6 +1152,7 @@ Commands:
   watch    Watch the repository and emit incremental graph updates
   mermaid  Export the dependency graph as a Mermaid flowchart for Markdown viewers
   policy   Evaluate architecture rules against the graph and produce a pass/fail report (exits non-zero on failure)
+  api-diff Compare two graph snapshots and report added, removed, and changed public-API exports
   mcp      Start the RepoGraph MCP stdio server
 `);
 }
