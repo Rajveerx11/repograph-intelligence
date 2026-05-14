@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-14
+
 ### Added
 
 - **Web explorer: dark mode + export buttons** — header now carries an "Export Mermaid" button, an "Export DOT" button, and a theme toggle. Both export buttons hit a new `POST /api/export` endpoint that delegates to the core `toMermaid` / `toDot` converters and returns the diagram as a downloadable blob; client-side, the response is wrapped in an `Anchor + URL.createObjectURL` flow and saved as `repograph.mmd` or `repograph.dot`. The theme toggle flips a `data-theme="dark"` attribute on `<html>` (persisted in `localStorage`, defaulting to `prefers-color-scheme`) and a focused dark-palette layer overrides the relevant surfaces — header, inspector, action result, graph stage — without touching the existing light-mode rules.
@@ -71,5 +73,6 @@ Initial public release.
 - Bounded file read sizes
 - Zero external production dependencies in core (full inspectability)
 
-[Unreleased]: https://github.com/Rajveerx11/repograph-intelligence/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Rajveerx11/repograph-intelligence/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Rajveerx11/repograph-intelligence/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Rajveerx11/repograph-intelligence/releases/tag/v0.1.0
