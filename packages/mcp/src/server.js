@@ -22,6 +22,7 @@ import {
   recommendArchitecture,
   semanticSearch,
   summarizeRepository,
+  toDot,
   toMermaid,
   validatePolicy,
   validateGraph
@@ -238,6 +239,27 @@ const tools = [
           description: "Lowest severity that causes the report to fail.",
           enum: ["info", "warning", "error"]
         }
+      },
+      required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_dot",
+    description: "Export the repository dependency graph as GraphViz DOT source. Renderable by Graphviz dot/neato/twopi, Gephi, yEd, and any tool that consumes DOT.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze." },
+        rankdir: {
+          type: "string",
+          description: "Layout rank direction. `TD` is accepted as an alias for GraphViz `TB`.",
+          enum: ["LR", "TB", "TD", "RL", "BT"]
+        },
+        includeSymbols: { type: "boolean" },
+        includePackages: { type: "boolean" },
+        includeContains: { type: "boolean" },
+        maxNodes: { type: "number", description: "Cap on rendered nodes (1-5000, default 200)." },
+        maxEdges: { type: "number", description: "Cap on rendered edges (1-20000, default 400)." }
       },
       required: ["repoPath"]
     }
@@ -498,6 +520,29 @@ async function callTool(name, args) {
     const failOn = optionalSeverityTier(args.failOn);
     return evaluatePolicy(graph, policy, { failOn });
   }
+  if (name === "repograph_dot") {
+    const graph = await analyzeRepository(requireRepoPath(args));
+    const rankdir = optionalRankdir(args.rankdir);
+    const options = {
+      rankdir,
+      includeSymbols: args.includeSymbols === true,
+      includePackages: args.includePackages !== false,
+      includeContains: args.includeContains === true,
+      maxNodes: boundedLimit(args.maxNodes, 200, 5000),
+      maxEdges: boundedLimit(args.maxEdges, 400, 20000)
+    };
+    return {
+      dot: toDot(graph, options),
+      options: {
+        rankdir: options.rankdir ?? "LR",
+        includeSymbols: options.includeSymbols,
+        includePackages: options.includePackages,
+        includeContains: options.includeContains,
+        maxNodes: options.maxNodes,
+        maxEdges: options.maxEdges
+      }
+    };
+  }
   if (name === "repograph_mermaid") {
     const graph = await analyzeRepository(requireRepoPath(args));
     const direction = optionalDirection(args.direction);
@@ -594,6 +639,17 @@ function optionalSeverityTier(value) {
     throw new Error("failOn must be info, warning, or error.");
   }
   return value;
+}
+
+function optionalRankdir(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const upper = typeof value === "string" ? value.toUpperCase() : "";
+  if (!["LR", "TB", "TD", "RL", "BT"].includes(upper)) {
+    throw new Error("rankdir must be one of LR, TB, TD, RL, BT.");
+  }
+  return upper;
 }
 
 function optionalDirection(value) {

@@ -33,6 +33,7 @@ import {
   evaluatePolicy,
   loadPolicy,
   summarizeRepository,
+  toDot,
   toMermaid,
   validateGraph
 } from "../../core/src/index.js";
@@ -99,6 +100,8 @@ try {
     await watchCommand(args);
   } else if (command === "mermaid") {
     await mermaidCommand(args);
+  } else if (command === "dot") {
+    await dotCommand(args);
   } else if (command === "policy") {
     await policyCommand(args);
   } else if (command === "api-diff") {
@@ -411,6 +414,36 @@ function formatPolicyReport(report) {
   lines.push("");
   lines.push(`Status: ${report.passed ? "PASS" : "FAIL"}`);
   return lines.join("\n");
+}
+
+async function dotCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+
+  const rankdir = options.rankdir ?? options.direction;
+  const maxNodes = options["max-nodes"] != null ? Number(options["max-nodes"]) : undefined;
+  const maxEdges = options["max-edges"] != null ? Number(options["max-edges"]) : undefined;
+
+  const dot = toDot(graph, {
+    rankdir,
+    includeSymbols: options.symbols === true,
+    includePackages: options["no-packages"] !== true,
+    includeContains: options["include-contains"] === true,
+    maxNodes,
+    maxEdges
+  });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, dot, "utf8");
+    console.log(`DOT graph: ${outputPath}`);
+    return;
+  }
+
+  console.log(dot);
 }
 
 async function mermaidCommand(args) {
@@ -994,6 +1027,11 @@ function parseTargetAndOptions(args) {
       options.rank = true;
       continue;
     }
+    if (arg === "--rankdir") {
+      options.rankdir = requireValue(args, index, "--rankdir");
+      index += 1;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1225,6 +1263,7 @@ Usage:
   repograph supply-chain [repo] [--online] [--timeout ms] [--out path] [--json]
   repograph watch [repo] [--out path] [--debounce ms]
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
+  repograph dot [repo] [--graph path] [--rankdir LR|TB|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
   repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
   repograph coverage [repo] --lcov path [--graph path] [--rank] [--limit n] [--coverage-threshold n] [--json] [--out path]
@@ -1255,6 +1294,7 @@ Commands:
   supply-chain Audit dependency manifests, licenses, and OSV advisories
   watch    Watch the repository and emit incremental graph updates
   mermaid  Export the dependency graph as a Mermaid flowchart for Markdown viewers
+  dot      Export the dependency graph as GraphViz DOT source (renderable by dot/neato, Gephi, yEd)
   policy   Evaluate architecture rules against the graph and produce a pass/fail report (exits non-zero on failure)
   api-diff Compare two graph snapshots and report added, removed, and changed public-API exports
   coverage Overlay LCOV test coverage onto the graph and (with --rank) prioritize high-risk low-coverage files

@@ -18,6 +18,7 @@ import {
   parsePyprojectDependencies,
   parseRequirements,
   rankByCoverageRisk,
+  toDot,
   toMermaid,
   validatePolicy
 } from "../packages/core/src/index.js";
@@ -191,6 +192,68 @@ test("watch mode emits initial graph and rebuilds after file changes", async () 
     await stop();
     await rm(repoPath, { recursive: true, force: true });
   }
+});
+
+test("toDot renders a digraph with files and packages by default", () => {
+  const dot = toDot(mermaidFixtureGraph);
+
+  assert.match(dot, /^digraph RepoGraph \{\n/);
+  assert.match(dot, /rankdir=LR;/);
+  assert.match(dot, /n1 \[label="index\.ts"/);
+  assert.match(dot, /n3 \[label="express"/);
+  assert.match(dot, /shape=ellipse, fillcolor="#e2e8f0"/);
+  assert.match(dot, /n1 -> n2;/);
+  assert.match(dot, /n1 -> n3 \[style=dashed/);
+});
+
+test("toDot accepts TD as a Mermaid-style alias for TB and rejects unknown rankdirs", () => {
+  const dot = toDot(mermaidFixtureGraph, { rankdir: "TD" });
+  assert.match(dot, /rankdir=TB;/, "TD should be normalised to TB so users can share flags with the mermaid command");
+
+  assert.throws(() => toDot(mermaidFixtureGraph, { rankdir: "DIAGONAL" }), /rankdir must be one of/);
+});
+
+test("toDot escapes quotes, backslashes, control characters, and trims long labels", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:weird.ts", type: "file", label: "a\"b\\c\nde", path: "weird.ts" },
+      { id: "package:long", type: "package", label: "x".repeat(120) }
+    ],
+    edges: []
+  };
+
+  const dot = toDot(graph);
+
+  // Inside a DOT quoted string, `\\` and `\"` are valid escapes; the source
+  // should contain those sequences and never bare control characters.
+  assert.match(dot, /a\\"b\\\\c d e/, "quote, backslash, newline, and control chars should be escaped or stripped");
+  assert.match(dot, /…"/, "long labels should be truncated with an ellipsis");
+});
+
+test("toDot truncates large graphs and annotates the cap as a DOT comment", () => {
+  const nodes = [];
+  const edges = [];
+  for (let index = 0; index < 50; index += 1) {
+    nodes.push({ id: `file:f${index}.ts`, type: "file", label: `f${index}.ts`, path: `f${index}.ts` });
+  }
+  for (let index = 0; index < 30; index += 1) {
+    edges.push({ id: `e${index}`, type: "imports", from: `file:f${index}.ts`, to: `file:f${index + 1}.ts`, scope: "internal" });
+  }
+  const graph = { version: 1, generatedAt: "t", root: "t", nodes, edges };
+
+  const dot = toDot(graph, { maxNodes: 10, maxEdges: 5 });
+  const nodeMatches = dot.match(/^  n\d+ \[label/gm) ?? [];
+  assert.equal(nodeMatches.length, 10);
+  assert.match(dot, /\/\/ Truncated: nodes 10\/50, edges capped at 5\./);
+});
+
+test("toDot throws on missing or malformed graphs", () => {
+  assert.throws(() => toDot(null), /requires a graph/);
+  assert.throws(() => toDot({}), /requires a graph/);
+  assert.throws(() => toDot({ nodes: [], edges: "nope" }), /requires a graph/);
 });
 
 async function waitFor(predicate, timeoutMs) {

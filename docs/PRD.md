@@ -303,7 +303,7 @@ repograph mermaid ./repo --out diagram.mmd
 
 #### 11.8 Diagram Export
 
-Convert any analyzed graph into a Mermaid flowchart that renders inline in GitHub, GitLab, Notion, and most Markdown viewers. Exposed both via the CLI (`repograph mermaid`) and the MCP tool `repograph_mermaid` so AI agents can request a paste-ready architecture diagram in the same conversation they use for analysis or context retrieval. Node labels are sanitized against parse-significant Mermaid characters; deterministic alias IDs make the output diff-friendly for CI drift detection.
+Convert any analyzed graph into a Mermaid flowchart (`repograph mermaid` / `repograph_mermaid`) that renders inline in GitHub, GitLab, Notion, and most Markdown viewers, or into GraphViz DOT source (`repograph dot` / `repograph_dot`) for Graphviz dot/neato/twopi, Gephi, yEd, and any downstream tool that consumes DOT. The two exporters share an option matrix (rank direction, symbol/package/contains filters, node/edge caps, stable alias IDs) and both apply parse-safe label escaping so user-controlled file names cannot break the surrounding diagram syntax. Deterministic alias IDs make the output diff-friendly for CI drift detection.
 
 #### 11.11 Test Coverage Overlay
 
