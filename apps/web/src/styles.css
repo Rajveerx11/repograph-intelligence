@@ -802,3 +802,128 @@ body {
     flex: 1;
   }
 }
+
+/* Header export controls + theme toggle */
+.export-button,
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.7);
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.export-button:hover,
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.export-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.export-error {
+  margin: 6px 22px 0;
+  color: #b91c1c;
+  font-size: 12px;
+  grid-column: 1 / -1;
+}
+
+/* Dark theme overrides — applied when <html data-theme="dark"> */
+[data-theme="dark"] body {
+  background: #060b18;
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .app-shell {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(8, 12, 24, 0.96)),
+    radial-gradient(circle at 18% 14%, rgba(59, 130, 246, 0.16), transparent 32%),
+    #060b18;
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .workspace-header {
+  background: rgba(15, 23, 42, 0.78);
+  border-bottom-color: rgba(71, 85, 105, 0.42);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .header-metrics dd,
+[data-theme="dark"] .selection-card h2,
+[data-theme="dark"] .selection-card p,
+[data-theme="dark"] .action-result h2,
+[data-theme="dark"] .action-result p,
+[data-theme="dark"] .empty-state h2,
+[data-theme="dark"] .empty-state p,
+[data-theme="dark"] .field-grid dt,
+[data-theme="dark"] .field-grid dd {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .header-metrics dt,
+[data-theme="dark"] .panel-heading p,
+[data-theme="dark"] .panel-heading span {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .root-input,
+[data-theme="dark"] .action-inputs input {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(71, 85, 105, 0.55);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .root-input::placeholder,
+[data-theme="dark"] .action-inputs input::placeholder {
+  color: #64748b;
+}
+
+[data-theme="dark"] .segmented-control,
+[data-theme="dark"] .load-button,
+[data-theme="dark"] .export-button,
+[data-theme="dark"] .theme-toggle {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(71, 85, 105, 0.55);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .segmented-control button.active,
+[data-theme="dark"] .root-button {
+  background: rgba(37, 99, 235, 0.9);
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .inspector-panel {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(71, 85, 105, 0.42);
+}
+
+[data-theme="dark"] .action-result {
+  background: rgba(8, 12, 24, 0.6);
+  border-color: rgba(71, 85, 105, 0.42);
+}
+
+[data-theme="dark"] .action-result pre.text-view {
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .graph-stage {
+  background: rgba(8, 12, 24, 0.5);
+}
+
+[data-theme="dark"] .live-status {
+  color: #94a3b8;
+}

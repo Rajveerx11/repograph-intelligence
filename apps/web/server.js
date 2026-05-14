@@ -13,7 +13,9 @@ import {
   recommendArchitecture,
   saveGraph,
   scoreDependencyRisk,
-  summarizeRepository
+  summarizeRepository,
+  toDot,
+  toMermaid
 } from "../../packages/core/src/index.js";
 import { startWatch } from "../../packages/core/src/watch.js";
 
@@ -316,7 +318,54 @@ async function handleApi(request, response) {
     return;
   }
 
+  if (request.url === "/api/export") {
+    const format = typeof body.format === "string" ? body.format : "";
+    if (!["mermaid", "dot"].includes(format)) {
+      sendJson(response, 400, { error: "format must be 'mermaid' or 'dot'." });
+      return;
+    }
+    const graph = await getGraph();
+    const exportOptions = sanitizeExportOptions(body, format);
+    let content;
+    try {
+      content = format === "mermaid" ? toMermaid(graph, exportOptions) : toDot(graph, exportOptions);
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : "Export failed." });
+      return;
+    }
+    sendJson(response, 200, {
+      format,
+      content,
+      filename: format === "mermaid" ? "repograph.mmd" : "repograph.dot"
+    });
+    return;
+  }
+
   sendJson(response, 404, { error: "Unknown API route." });
+}
+
+function sanitizeExportOptions(body, format) {
+  const allowedDirections = new Set(["LR", "TD", "TB", "RL", "BT"]);
+  const directionRaw = typeof body.direction === "string" ? body.direction.toUpperCase() : "";
+  const direction = allowedDirections.has(directionRaw) ? directionRaw : "LR";
+  const numericLimit = (value, fallback, max) => {
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < 1) {
+      return fallback;
+    }
+    return Math.min(max, number);
+  };
+  const common = {
+    includeSymbols: body.includeSymbols === true,
+    includePackages: body.includePackages !== false,
+    includeContains: body.includeContains === true,
+    maxNodes: numericLimit(body.maxNodes, 200, 5000),
+    maxEdges: numericLimit(body.maxEdges, 400, 20000)
+  };
+  if (format === "mermaid") {
+    return { ...common, direction };
+  }
+  return { ...common, rankdir: direction };
 }
 
 async function runAction(graph, body) {
