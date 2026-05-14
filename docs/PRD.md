@@ -305,6 +305,10 @@ repograph mermaid ./repo --out diagram.mmd
 
 Convert any analyzed graph into a Mermaid flowchart that renders inline in GitHub, GitLab, Notion, and most Markdown viewers. Exposed both via the CLI (`repograph mermaid`) and the MCP tool `repograph_mermaid` so AI agents can request a paste-ready architecture diagram in the same conversation they use for analysis or context retrieval. Node labels are sanitized against parse-significant Mermaid characters; deterministic alias IDs make the output diff-friendly for CI drift detection.
 
+#### 11.11 Test Coverage Overlay
+
+Ingest LCOV tracefiles produced by Istanbul, c8, pytest-cov, jacoco, and similar tools to overlay test-coverage data on the graph. Each file node gains a `coverage` field with line, branch, and function percentages plus raw hit counts. The `repograph coverage --rank` command and the `repograph_coverage` MCP tool combine the dependency risk score with inverse coverage to surface high-risk low-coverage files first, replacing the manual "which files do I write tests for next?" question with a deterministic priority list. The coverage threshold (default 80%) excludes already-well-covered files so the ranking stays focused on real gaps.
+
 #### 11.10 API Surface Diff
 
 Compare two graph snapshots and classify every exported symbol as added, removed, or changed (a "changed" classification covers symbol-kind transitions such as `function` → `class`; richer signature awareness is on the v2 roadmap). The `repograph api-diff` CLI command and the `repograph_api_diff` MCP tool produce a structured report with per-file groupings, an aggregate `breaking` count, and dedicated lists of files whose export sets appeared or disappeared entirely. The CLI exits with status `3` when `--fail-on-breaking` is set and the breaking count is non-zero, enabling release-gate automation. PR bots can ingest the JSON report directly to generate human-readable change summaries.

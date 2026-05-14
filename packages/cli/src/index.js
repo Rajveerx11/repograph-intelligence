@@ -5,7 +5,10 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  applyCoverageToGraph,
   diffApiSurface,
+  loadLcov,
+  rankByCoverageRisk,
   analyzeChangedFiles,
   analyzeImpact,
   analyzeRepositories,
@@ -100,6 +103,8 @@ try {
     await policyCommand(args);
   } else if (command === "api-diff") {
     await apiDiffCommand(args);
+  } else if (command === "coverage") {
+    await coverageCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -204,6 +209,84 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function coverageCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  if (!options.lcov) {
+    throw new Error("coverage command requires --lcov <path>");
+  }
+  const coverageReport = await loadLcov(options.lcov);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+
+  if (options.rank === true) {
+    const ranking = rankByCoverageRisk(graph, coverageReport, {
+      limit: options.limit != null ? Number(options.limit) : undefined,
+      coverageThreshold: options["coverage-threshold"] != null ? Number(options["coverage-threshold"]) : undefined
+    });
+    if (options.out) {
+      const outputPath = path.resolve(options.out);
+      await mkdir(path.dirname(outputPath), { recursive: true });
+      await writeFile(outputPath, `${JSON.stringify(ranking, null, 2)}\n`, "utf8");
+      console.log(`Coverage-risk ranking: ${outputPath}`);
+    }
+    if (options.json) {
+      console.log(JSON.stringify(ranking, null, 2));
+    } else {
+      console.log(formatCoverageRanking(ranking));
+    }
+    return;
+  }
+
+  const { graph: enriched, matchReport } = applyCoverageToGraph(graph, coverageReport);
+  const result = {
+    generatedAt: new Date().toISOString(),
+    matchReport,
+    files: enriched.nodes
+      .filter((node) => node.type === "file")
+      .map((node) => ({ path: node.path, coverage: node.coverage }))
+  };
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    console.log(`Coverage overlay: ${outputPath}`);
+  }
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(formatCoverageOverlay(result));
+  }
+}
+
+function formatCoverageOverlay(result) {
+  const lines = [];
+  lines.push(`Coverage files: ${result.matchReport.coverageFiles}`);
+  lines.push(`Matched to graph: ${result.matchReport.matched}`);
+  lines.push(`Unmatched coverage entries: ${result.matchReport.unmatchedCoverage}`);
+  lines.push(`Files in graph without coverage: ${result.matchReport.unmatchedGraph}`);
+  const totals = result.matchReport.totals;
+  if (totals) {
+    lines.push("");
+    lines.push(`Totals — lines: ${totals.lineCoverage ?? "n/a"}%, branches: ${totals.branchCoverage ?? "n/a"}%, functions: ${totals.functionCoverage ?? "n/a"}%`);
+  }
+  return lines.join("\n");
+}
+
+function formatCoverageRanking(ranking) {
+  const lines = [];
+  lines.push(`Coverage-risk ranking (threshold ${ranking.coverageThreshold}%, ${ranking.rows.length} rows):`);
+  lines.push("");
+  for (const row of ranking.rows) {
+    const cov = row.lineCoverage === null ? "no coverage" : `${row.lineCoverage}% lines`;
+    lines.push(`[${row.riskLevel.toUpperCase()}] ${row.path} — risk ${row.riskScore}, ${cov}, priority ${row.priority}`);
+  }
+  if (ranking.rows.length === 0) {
+    lines.push("No files exceed the configured threshold combined with positive risk.");
+  }
+  return lines.join("\n");
 }
 
 async function apiDiffCommand(args) {
@@ -897,6 +980,20 @@ function parseTargetAndOptions(args) {
       options["no-by-file"] = true;
       continue;
     }
+    if (arg === "--lcov") {
+      options.lcov = requireValue(args, index, "--lcov");
+      index += 1;
+      continue;
+    }
+    if (arg === "--coverage-threshold") {
+      options["coverage-threshold"] = requireValue(args, index, "--coverage-threshold");
+      index += 1;
+      continue;
+    }
+    if (arg === "--rank") {
+      options.rank = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1130,6 +1227,7 @@ Usage:
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
   repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
+  repograph coverage [repo] --lcov path [--graph path] [--rank] [--limit n] [--coverage-threshold n] [--json] [--out path]
   repograph mcp
 
 Commands:
@@ -1159,6 +1257,7 @@ Commands:
   mermaid  Export the dependency graph as a Mermaid flowchart for Markdown viewers
   policy   Evaluate architecture rules against the graph and produce a pass/fail report (exits non-zero on failure)
   api-diff Compare two graph snapshots and report added, removed, and changed public-API exports
+  coverage Overlay LCOV test coverage onto the graph and (with --rank) prioritize high-risk low-coverage files
   mcp      Start the RepoGraph MCP stdio server
 `);
 }
