@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GraphViz / DOT export** — new `toDot(graph, options)` core function emits GraphViz DOT source that renders in Graphviz dot/neato/twopi, Gephi, yEd, and any tool that consumes DOT. Sister export to `toMermaid` with a matching option matrix (`rankdir`, symbol/package/contains filters, node/edge caps, stable alias IDs). `rankdir` accepts the Mermaid-style `TD` value as an alias for GraphViz `TB` so the CLI flags carry across both commands. Node attributes color-code file/symbol/package types so a basic `dot -Tpng` invocation produces a readable diagram with no further configuration. Exposed via `repograph dot` and the `repograph_dot` MCP tool.
 - **Test Coverage Overlay** — new `packages/core/src/coverage.js` ingests LCOV tracefiles (Istanbul, c8, pytest-cov, jacoco) and attaches per-file `coverage` metadata (line, branch, function percentages, raw hit counts) to file nodes. Path matching tries exact → suffix → basename, with the basename fallback marked `weakMatch: true`. New `rankByCoverageRisk(graph, coverage, options)` combines `scoreDependencyRisk` with the inverse line coverage to surface high-risk low-coverage files first; the `coverageThreshold` option (default 80%) filters out fully-covered files so the report stays focused. Exposed via the `repograph coverage` CLI command (`--lcov`, `--rank`, `--limit`, `--coverage-threshold`) and the `repograph_coverage` MCP tool, which accepts the LCOV payload inline (capped by the 1 MB JSON-RPC envelope — for larger tracefiles use the CLI which reads from disk with a 10 MB default cap).
 - **API Surface Diff** — new `diffApiSurface(baseGraph, headGraph, options)` core function compares two RepoGraph snapshots and classifies every exported symbol as added, removed, or changed (when the underlying symbol kind transitions, e.g., `function` → `class`). Reports per-file groupings, lists of files whose entire export set appeared or disappeared, and an aggregate `breaking` count (removed + changed). Exposed via the `repograph api-diff` CLI command (with optional `--fail-on-breaking` that exits with status `3`) and the `repograph_api_diff` MCP tool. Foundation for PR-review automation and release-notes generation.
 - **Architecture Policy as Code** — new `packages/core/src/policy.js` engine with five v1 rule types (`forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, `max-lines`), per-rule severity (`info`/`warning`/`error`), and a glob matcher (`**`, `*`, `?`) used to scope rules to subtrees. Exposed via the `repograph policy` CLI command (exits non-zero on violations meeting `--fail-on` threshold), the `repograph_policy` MCP tool (accepts inline `policy` or `policyPath`), and a sample [`examples/policy.example.json`](examples/policy.example.json).
@@ -35,13 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- Test count moves from 24 → 51 across the work since `0.1.0`:
+- Test count moves from 24 → 58 across the work since `0.1.0`:
   - 5 unit tests for `toMermaid` (default render, option matrix, truncation annotation, label escaping, malformed input)
   - 1 additional Mermaid escaping test covering pipes, backticks, and braces
   - 2 MCP integration tests for `repograph_mermaid` (tool advertisement, invalid-direction error)
   - 6 tests for the policy engine covering glob matcher semantics, schema validation, violation detection across all five rule types, cycle deduplication within scope, `failOn` threshold behavior, and on-disk `.json` policy loading
   - 7 tests for `diffApiSurface` covering classification across added/removed/changed, whole-file appearance/disappearance, per-file grouping, identical-graph short-circuit with `includeFileSummary: false`, malformed input rejection, name trimming and empty-path skipping, and duplicate-export conflict marking
   - 6 tests for the coverage overlay engine covering LCOV parsing (line/branch/function percentages, divide-by-zero handling, malformed-line tolerance, non-string input rejection), three-tier path matching (exact / suffix / basename), the `allowBasenameMatch=false` knob, the risk-coverage priority ranking with threshold filtering, and disk loading via `loadLcov`
+  - 5 tests for `toDot` covering default rendering, `TD → TB` rankdir aliasing plus invalid-rankdir rejection, label escaping for quotes/backslashes/control chars/long names, truncation annotation, and malformed-input rejection
 
 ## [0.1.0] - 2026-05-01
 

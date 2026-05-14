@@ -34,6 +34,7 @@ export { analyzeRepositories, summarizeWorkspace } from "./workspace.js";
 export { buildSemanticIndex, semanticSearch } from "./semantic.js";
 export { compressContext, summarizeRepository } from "./summaries.js";
 export { toMermaid } from "./mermaid.js";
+export { toDot } from "./dot.js";
 export { compileGlob, evaluatePolicy, loadPolicy, validatePolicy } from "./policy.js";
 export { diffApiSurface } from "./api-diff.js";
 export {

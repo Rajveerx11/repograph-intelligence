@@ -50,6 +50,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
 - Overlays LCOV test coverage onto file nodes via `repograph coverage` — parses Istanbul/c8/pytest-cov/jacoco tracefiles, attaches line/branch/function percentages per file, and (with `--rank`) emits a priority list combining `scoreDependencyRisk` with inverse coverage so high-risk low-coverage files surface first
 - Compares two graph snapshots and reports public-API surface changes via `repograph api-diff` — every exported symbol classified as added, removed, or changed (symbol-kind transition such as `function` → `class`), with optional `--fail-on-breaking` for release gates
+- Exports the dependency graph as GraphViz DOT (`repograph dot`) for Graphviz dot/neato, Gephi, yEd, and any tool that consumes DOT, with color-coded node attributes per file/symbol/package and the same option matrix as the Mermaid exporter
 - Exports the dependency graph as a Mermaid flowchart (`repograph mermaid`) that renders inline in GitHub READMEs, GitLab, Notion, and most Markdown viewers, with options for direction, node-type filters, symbol/contain edges, and explicit caps for monorepo-friendly truncation
 - Watches a repository in the background and rebuilds the graph incrementally on file changes with a debounced collapse window
 - Provides a React Flow graph explorer with a live indicator that streams graph updates over Server-Sent Events as the watcher rebuilds and auto-refreshes the visible graph when the watcher rebuilds
@@ -280,6 +281,15 @@ flowchart LR
 
 Edge styles distinguish relationship types: `-->` for internal imports, `-.->` for external dependencies, `==>` for explicit exports, `-. ref .->` for symbol references, and `---` for `contains` edges when `--include-contains` is set. Node IDs are stable per-graph aliases (`n1`, `n2`, …) so the output diffs cleanly in CI when used for baseline drift detection.
 
+For toolchains that consume GraphViz DOT (dot/neato/twopi, Gephi, yEd, plantuml/dot tooling), use the sister `dot` command:
+
+```bash
+npm run repograph -- dot ./repo --rankdir TB --max-nodes 80 --out diagram.dot
+dot -Tsvg diagram.dot > diagram.svg
+```
+
+The option matrix mirrors `mermaid` (`--symbols`, `--no-packages`, `--include-contains`, `--max-nodes`, `--max-edges`). `--rankdir` takes `LR/TB/RL/BT` plus `TD` as a Mermaid-style alias for `TB`. Node and edge attributes color-code file/symbol/package types so `dot -Tpng` produces a readable diagram without further configuration.
+
 Enforce architecture rules ("policy as code") against the graph and fail CI on violations:
 
 ```bash
@@ -378,6 +388,7 @@ The server exposes these tools:
 | `repograph_supply_chain` | Audit dependency manifests, license risk, and optional OSV advisories |
 | `repograph_recommend` | Generate architecture improvement recommendations |
 | `repograph_mermaid` | Export the dependency graph as a Mermaid flowchart for Markdown viewers |
+| `repograph_dot` | Export the dependency graph as GraphViz DOT source |
 | `repograph_policy` | Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) and return a pass/fail report |
 | `repograph_api_diff` | Compare two RepoGraph snapshots and report added, removed, and changed public-API exports |
 | `repograph_coverage` | Overlay LCOV coverage on file nodes and optionally rank files by combined risk and low coverage |
