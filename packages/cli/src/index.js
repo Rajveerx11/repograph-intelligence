@@ -1263,7 +1263,7 @@ Usage:
   repograph supply-chain [repo] [--online] [--timeout ms] [--out path] [--json]
   repograph watch [repo] [--out path] [--debounce ms]
   repograph mermaid [repo] [--graph path] [--direction LR|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
-  repograph dot [repo] [--graph path] [--rankdir LR|TB|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
+  repograph dot [repo] [--graph path] [--rankdir LR|TB|TD|RL|BT] [--symbols] [--no-packages] [--include-contains] [--max-nodes n] [--max-edges n] [--out path]
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
   repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
   repograph coverage [repo] --lcov path [--graph path] [--rank] [--limit n] [--coverage-threshold n] [--json] [--out path]

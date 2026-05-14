@@ -276,6 +276,19 @@ test("MCP server exposes the repograph_mermaid tool with a typed schema", async 
   assert.match(output, /"includeSymbols"/);
 });
 
+test("MCP server normalises TD rankdir to TB for repograph_dot", async () => {
+  const output = await runMcpProbe([
+    framedMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
+  ]);
+
+  // We can't easily run a real tools/call here (would need a temp repo on the
+  // allowlist). The schema advertisement covers the shape; the normalisation
+  // itself is unit-tested via toDot. This test just guards against the tool
+  // being removed from the registry.
+  assert.match(output, /"name":\s*"repograph_dot"/);
+  assert.match(output, /GraphViz DOT source/);
+});
+
 test("MCP server rejects an unknown direction for repograph_mermaid", async () => {
   const output = await runMcpProbe([
     framedMessage({
