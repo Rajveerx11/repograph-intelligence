@@ -491,6 +491,131 @@ test("evaluatePolicy passed flag respects failOn threshold", () => {
   assert.equal(warningReport.passed, false, "warnings should fail when failOn=warning");
 });
 
+test("evaluatePolicy fires require-import when the importing file has no matching import edge", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/handlers/user.ts", type: "file", path: "src/handlers/user.ts" },
+      { id: "file:src/handlers/order.ts", type: "file", path: "src/handlers/order.ts" },
+      { id: "file:src/auth.ts", type: "file", path: "src/auth.ts" }
+    ],
+    edges: [
+      { id: "e1", type: "imports", from: "file:src/handlers/user.ts", to: "file:src/auth.ts", scope: "internal" }
+    ]
+  };
+  const policy = validatePolicy({
+    rules: [{ id: "auth-required", type: "require-import", severity: "error", from: "src/handlers/**", to: "src/auth.ts" }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const violations = report.violations.filter((violation) => violation.ruleId === "auth-required");
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].target, "src/handlers/order.ts");
+});
+
+test("evaluatePolicy enforces max-fan-in by counting incoming import edges per file", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/util.ts", type: "file", path: "src/util.ts" },
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts" },
+      { id: "file:src/b.ts", type: "file", path: "src/b.ts" },
+      { id: "file:src/c.ts", type: "file", path: "src/c.ts" }
+    ],
+    edges: [
+      { id: "e1", type: "imports", from: "file:src/a.ts", to: "file:src/util.ts", scope: "internal" },
+      { id: "e2", type: "imports", from: "file:src/b.ts", to: "file:src/util.ts", scope: "internal" },
+      { id: "e3", type: "imports", from: "file:src/c.ts", to: "file:src/util.ts", scope: "internal" }
+    ]
+  };
+  const policy = validatePolicy({
+    rules: [{ id: "util-fan-in", type: "max-fan-in", severity: "warning", target: "src/util.ts", limit: 2 }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const violation = report.violations.find((entry) => entry.ruleId === "util-fan-in");
+  assert.ok(violation, "fan-in 3 exceeds limit 2");
+  assert.equal(violation.actual, 3);
+});
+
+test("evaluatePolicy detects layered violations when an import flows upward against declared order", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/ui/Button.tsx", type: "file", path: "src/ui/Button.tsx" },
+      { id: "file:src/app/Routes.tsx", type: "file", path: "src/app/Routes.tsx" },
+      { id: "file:src/domain/User.ts", type: "file", path: "src/domain/User.ts" }
+    ],
+    edges: [
+      // OK: ui (layer 0) imports app (layer 1)
+      { id: "e1", type: "imports", from: "file:src/ui/Button.tsx", to: "file:src/app/Routes.tsx", scope: "internal" },
+      // VIOLATION: domain (layer 2) imports app (layer 1) — upward
+      { id: "e2", type: "imports", from: "file:src/domain/User.ts", to: "file:src/app/Routes.tsx", scope: "internal" }
+    ]
+  };
+  const policy = validatePolicy({
+    rules: [{
+      id: "hex-layering",
+      type: "layered",
+      severity: "error",
+      layers: [
+        { name: "ui", glob: "src/ui/**" },
+        { name: "app", glob: "src/app/**" },
+        { name: "domain", glob: "src/domain/**" }
+      ]
+    }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const layerViolations = report.violations.filter((entry) => entry.ruleId === "hex-layering");
+  assert.equal(layerViolations.length, 1);
+  assert.equal(layerViolations[0].fromLayer, "domain");
+  assert.equal(layerViolations[0].toLayer, "app");
+});
+
+test("evaluatePolicy applies naming-convention against basename by default and falls through to path when configured", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/components/Button.tsx", type: "file", path: "src/components/Button.tsx" },
+      { id: "file:src/components/badComponentName.tsx", type: "file", path: "src/components/badComponentName.tsx" },
+      { id: "file:src/components/helper-fn.tsx", type: "file", path: "src/components/helper-fn.tsx" }
+    ],
+    edges: []
+  };
+  const policy = validatePolicy({
+    rules: [{
+      id: "component-pascal-case",
+      type: "naming-convention",
+      severity: "warning",
+      target: "src/components/**",
+      pattern: "^[A-Z][A-Za-z0-9]*\\.tsx$"
+    }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const namingViolations = report.violations.filter((entry) => entry.ruleId === "component-pascal-case");
+  assert.equal(namingViolations.length, 2, "lowercase and kebab-case file names should both fail");
+  assert.ok(namingViolations.some((v) => v.target.endsWith("badComponentName.tsx")));
+  assert.ok(namingViolations.some((v) => v.target.endsWith("helper-fn.tsx")));
+});
+
+test("validatePolicy rejects malformed layered, require-import, and naming-convention rules", () => {
+  assert.throws(() => validatePolicy({ rules: [{ id: "x", type: "layered" }] }), /'layers' array with at least two entries/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "x", type: "layered", layers: [{ name: "a", glob: "**" }] }] }), /'layers' array with at least two entries/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "x", type: "layered", layers: [{ name: "a", glob: "**" }, { name: "a", glob: "src/**" }] }] }), /duplicate layer name/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "x", type: "require-import", from: "**" }] }), /requires string field 'to'/);
+  assert.throws(() => validatePolicy({ rules: [{ id: "x", type: "naming-convention", target: "**", pattern: "(unclosed" }] }), /not a valid regular expression/);
+});
+
 test("loadPolicy reads, parses, and validates a .json policy file", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "repograph-policy-"));
   const policyPath = path.join(dir, "policy.json");

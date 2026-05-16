@@ -7,8 +7,13 @@ const SUPPORTED_RULE_TYPES = new Set([
   "forbid-dependency",
   "no-cycles",
   "max-imports",
-  "max-lines"
+  "max-lines",
+  "require-import",
+  "max-fan-in",
+  "layered",
+  "naming-convention"
 ]);
+const MAX_NAMING_PATTERN_LENGTH = 512;
 const SEVERITY_RANK = { info: 1, warning: 2, error: 3 };
 
 /**
@@ -113,8 +118,56 @@ function validateRuleFields(rule) {
       requireString(rule, "target");
       requirePositiveInt(rule, "limit");
       break;
+    case "require-import":
+      requireString(rule, "from");
+      requireString(rule, "to");
+      break;
+    case "max-fan-in":
+      requireString(rule, "target");
+      requirePositiveInt(rule, "limit");
+      break;
+    case "layered":
+      validateLayeredRule(rule);
+      break;
+    case "naming-convention":
+      requireString(rule, "target");
+      requireString(rule, "pattern");
+      if (rule.pattern.length > MAX_NAMING_PATTERN_LENGTH) {
+        throw new Error(`Rule '${rule.id}' pattern exceeds ${MAX_NAMING_PATTERN_LENGTH} characters.`);
+      }
+      try {
+        new RegExp(rule.pattern);
+      } catch (error) {
+        throw new Error(`Rule '${rule.id}' pattern is not a valid regular expression: ${error.message}`);
+      }
+      if (rule.appliesTo !== undefined && !["basename", "path"].includes(rule.appliesTo)) {
+        throw new Error(`Rule '${rule.id}' appliesTo must be 'basename' or 'path'.`);
+      }
+      break;
     default:
       break;
+  }
+}
+
+function validateLayeredRule(rule) {
+  if (!Array.isArray(rule.layers) || rule.layers.length < 2) {
+    throw new Error(`Rule '${rule.id}' requires a 'layers' array with at least two entries.`);
+  }
+  const seenNames = new Set();
+  for (const [index, layer] of rule.layers.entries()) {
+    if (!layer || typeof layer !== "object" || Array.isArray(layer)) {
+      throw new Error(`Rule '${rule.id}' layer at index ${index} must be an object.`);
+    }
+    if (typeof layer.name !== "string" || !layer.name.trim()) {
+      throw new Error(`Rule '${rule.id}' layer at index ${index} requires a non-empty 'name'.`);
+    }
+    if (seenNames.has(layer.name)) {
+      throw new Error(`Rule '${rule.id}' has duplicate layer name '${layer.name}'.`);
+    }
+    seenNames.add(layer.name);
+    if (typeof layer.glob !== "string" || !layer.glob.trim()) {
+      throw new Error(`Rule '${rule.id}' layer '${layer.name}' requires a 'glob' string.`);
+    }
   }
 }
 
@@ -193,6 +246,14 @@ function evaluateRule(rule, graph, indexes) {
       return evaluateMaxImports(rule, indexes);
     case "max-lines":
       return evaluateMaxLines(rule, indexes);
+    case "require-import":
+      return evaluateRequireImport(rule, graph, indexes);
+    case "max-fan-in":
+      return evaluateMaxFanIn(rule, graph, indexes);
+    case "layered":
+      return evaluateLayered(rule, graph, indexes);
+    case "naming-convention":
+      return evaluateNamingConvention(rule, indexes);
     default:
       return [];
   }
@@ -393,6 +454,145 @@ function canonicalCycleKey(paths) {
   }
   const rotated = paths.slice(smallestIndex, -1).concat(paths.slice(0, smallestIndex));
   return rotated.join("|");
+}
+
+function evaluateRequireImport(rule, graph, { fileNodes, fileById }) {
+  const fromMatch = compileGlob(rule.from);
+  const toMatch = compileGlob(rule.to);
+  const requiredFiles = fileNodes.filter((node) => fromMatch(node.path ?? ""));
+  if (!requiredFiles.length) {
+    return [];
+  }
+  const importsByFrom = new Map();
+  for (const edge of graph.edges) {
+    if (edge.type !== "imports") {
+      continue;
+    }
+    if (!importsByFrom.has(edge.from)) {
+      importsByFrom.set(edge.from, []);
+    }
+    importsByFrom.get(edge.from).push(edge.to);
+  }
+  const violations = [];
+  for (const file of requiredFiles) {
+    const importedIds = importsByFrom.get(file.id) ?? [];
+    const hasMatch = importedIds.some((targetId) => {
+      const targetNode = fileById.get(targetId);
+      return targetNode && toMatch(targetNode.path ?? "");
+    });
+    if (!hasMatch) {
+      violations.push({
+        message: `${file.path} matches '${rule.from}' but does not import any file matching '${rule.to}'.`,
+        target: file.path,
+        expected: rule.to
+      });
+    }
+  }
+  return violations;
+}
+
+function evaluateMaxFanIn(rule, graph, { fileNodes, fileById }) {
+  const match = compileGlob(rule.target);
+  const fanIn = new Map();
+  for (const edge of graph.edges) {
+    if (edge.type !== "imports") {
+      continue;
+    }
+    if (!fileById.has(edge.to)) {
+      continue;
+    }
+    fanIn.set(edge.to, (fanIn.get(edge.to) ?? 0) + 1);
+  }
+  const violations = [];
+  for (const node of fileNodes) {
+    if (!match(node.path ?? "")) {
+      continue;
+    }
+    const count = fanIn.get(node.id) ?? 0;
+    if (count > rule.limit) {
+      violations.push({
+        message: `${node.path} has fan-in ${count}, exceeds limit ${rule.limit}.`,
+        target: node.path,
+        actual: count,
+        limit: rule.limit
+      });
+    }
+  }
+  return violations;
+}
+
+function evaluateLayered(rule, graph, { fileNodes, fileById }) {
+  const layerMatchers = rule.layers.map((layer) => ({
+    name: layer.name,
+    match: compileGlob(layer.glob)
+  }));
+  const layerOf = new Map();
+  for (const node of fileNodes) {
+    const filePath = node.path ?? "";
+    for (let layerIndex = 0; layerIndex < layerMatchers.length; layerIndex += 1) {
+      if (layerMatchers[layerIndex].match(filePath)) {
+        layerOf.set(node.id, layerIndex);
+        break;
+      }
+    }
+  }
+  const violations = [];
+  const seen = new Set();
+  for (const edge of graph.edges) {
+    if (edge.type !== "imports") {
+      continue;
+    }
+    const fromLayer = layerOf.get(edge.from);
+    const toLayer = layerOf.get(edge.to);
+    if (fromLayer === undefined || toLayer === undefined) {
+      continue;
+    }
+    // Imports must flow from lower-indexed layers (more abstract / higher
+    // in the stack) toward higher-indexed layers (more concrete). An edge
+    // whose target sits in a strictly lower-indexed layer is a violation:
+    // it imports "upward" against the declared layering.
+    if (toLayer < fromLayer) {
+      const key = `${edge.from}->${edge.to}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const fromNode = fileById.get(edge.from);
+      const toNode = fileById.get(edge.to);
+      violations.push({
+        message: `${fromNode?.path ?? edge.from} (${layerMatchers[fromLayer].name}) imports ${toNode?.path ?? edge.to} (${layerMatchers[toLayer].name}), violating declared layer order.`,
+        from: fromNode?.path ?? edge.from,
+        to: toNode?.path ?? edge.to,
+        fromLayer: layerMatchers[fromLayer].name,
+        toLayer: layerMatchers[toLayer].name
+      });
+    }
+  }
+  return violations;
+}
+
+function evaluateNamingConvention(rule, { fileNodes }) {
+  const targetMatch = compileGlob(rule.target);
+  const regex = new RegExp(rule.pattern);
+  const appliesTo = rule.appliesTo ?? "basename";
+  const violations = [];
+  for (const node of fileNodes) {
+    if (!node.path || !targetMatch(node.path)) {
+      continue;
+    }
+    const candidate = appliesTo === "path"
+      ? node.path.replace(/\\/g, "/")
+      : path.posix.basename(node.path.replace(/\\/g, "/"));
+    if (!regex.test(candidate)) {
+      violations.push({
+        message: `${node.path} does not match naming pattern '${rule.pattern}' (${appliesTo}).`,
+        target: node.path,
+        expected: rule.pattern,
+        appliesTo
+      });
+    }
+  }
+  return violations;
 }
 
 function boundedInt(value, fallback, min, max) {

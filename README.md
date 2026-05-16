@@ -297,7 +297,16 @@ Enforce architecture rules ("policy as code") against the graph and fail CI on v
 npm run repograph -- policy ./repo --policy .repograph/policy.json --fail-on warning
 ```
 
-Policy files are JSON with five v1 rule types: `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines`. Globs accept `**`, `*`, and `?`. Each rule carries a severity (`info`, `warning`, `error`; default `error`). The CLI exits with status `2` when any violation meets the `--fail-on` threshold so CI can gate merges on structural invariants. See [`examples/policy.example.json`](examples/policy.example.json) for a starter file.
+Policy files are JSON with nine rule types covering the most common architectural invariants:
+
+- **`forbid-import`** / **`require-import`** — declare which internal imports are banned (or required) between glob-matched file sets.
+- **`forbid-dependency`** — ban external packages from a glob-matched file set (`@aws-sdk/*` from `packages/core/**`, etc.).
+- **`no-cycles`** — fail when any cycle exists in an optional `scope` glob; rotated cycles are deduplicated.
+- **`max-imports`** / **`max-fan-in`** / **`max-lines`** — cap a file's outgoing imports, incoming imports, or line count.
+- **`layered`** — declare ordered layers (each with a name + glob); the engine flags every import that flows "upward" against the declared order — ideal for hexagonal / clean-architecture enforcement.
+- **`naming-convention`** — assert that files matching a `target` glob also match a regular expression applied to their `basename` (default) or full `path`.
+
+Globs accept `**`, `*`, and `?`. Each rule carries a severity (`info`, `warning`, `error`; default `error`). The CLI exits with status `2` when any violation meets the `--fail-on` threshold so CI can gate merges on structural invariants. See [`examples/policy.example.json`](examples/policy.example.json) for a starter file demonstrating every rule type.
 
 Overlay LCOV test coverage data onto the dependency graph and rank high-risk low-coverage files for prioritized review:
 
