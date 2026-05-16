@@ -468,6 +468,11 @@ function evaluateRequireImport(rule, graph, { fileNodes, fileById }) {
     if (edge.type !== "imports") {
       continue;
     }
+    // Self-imports never satisfy a require-import rule: a file cannot
+    // "require itself" as the way to depend on the target glob.
+    if (edge.from === edge.to) {
+      continue;
+    }
     if (!importsByFrom.has(edge.from)) {
       importsByFrom.set(edge.from, []);
     }
@@ -477,6 +482,9 @@ function evaluateRequireImport(rule, graph, { fileNodes, fileById }) {
   for (const file of requiredFiles) {
     const importedIds = importsByFrom.get(file.id) ?? [];
     const hasMatch = importedIds.some((targetId) => {
+      if (targetId === file.id) {
+        return false;
+      }
       const targetNode = fileById.get(targetId);
       return targetNode && toMatch(targetNode.path ?? "");
     });
@@ -493,14 +501,26 @@ function evaluateRequireImport(rule, graph, { fileNodes, fileById }) {
 
 function evaluateMaxFanIn(rule, graph, { fileNodes, fileById }) {
   const match = compileGlob(rule.target);
+  // Deduplicate `(from, to)` pairs so a graph that happens to emit the
+  // same import edge twice does not inflate the fan-in count. Self-
+  // imports are excluded as well — a file does not "depend on itself".
+  const seenPairs = new Set();
   const fanIn = new Map();
   for (const edge of graph.edges) {
     if (edge.type !== "imports") {
       continue;
     }
+    if (edge.from === edge.to) {
+      continue;
+    }
     if (!fileById.has(edge.to)) {
       continue;
     }
+    const key = `${edge.from}->${edge.to}`;
+    if (seenPairs.has(key)) {
+      continue;
+    }
+    seenPairs.add(key);
     fanIn.set(edge.to, (fanIn.get(edge.to) ?? 0) + 1);
   }
   const violations = [];
@@ -521,6 +541,22 @@ function evaluateMaxFanIn(rule, graph, { fileNodes, fileById }) {
   return violations;
 }
 
+/**
+ * Layer-assignment precedence: a file is assigned to the FIRST layer
+ * whose glob matches it, in the order layers are declared in the
+ * policy. This matters when overlapping globs are present (e.g. both
+ * `apps/**` and `apps/web/**` could match `apps/web/server.js` — the
+ * earlier `apps/**` wins). Files that match no layer are intentionally
+ * unconstrained: imports involving an unmatched endpoint are skipped.
+ *
+ * The direction rule itself: imports must flow from a lower-indexed
+ * layer (top of the stack — typically presentation / UI) toward a
+ * higher-indexed layer (bottom — typically domain / data). An edge
+ * whose target sits at a strictly lower index than its source is
+ * flagged as "upward" and reported as a violation. This matches the
+ * standard hex / clean-architecture convention where outer layers may
+ * depend on inner layers but inner layers may not depend on outer.
+ */
 function evaluateLayered(rule, graph, { fileNodes, fileById }) {
   const layerMatchers = rule.layers.map((layer) => ({
     name: layer.name,

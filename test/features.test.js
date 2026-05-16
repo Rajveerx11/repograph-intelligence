@@ -1174,3 +1174,74 @@ test("detectDrift throws when either input is not a graph or snapshot", () => {
   assert.throws(() => detectDrift(good, "not-a-graph"), /head/);
   assert.throws(() => detectDrift({ nodes: [] }, good), /not a recognised graph or snapshot/);
 });
+
+test("evaluatePolicy require-import ignores self-imports when checking requirement satisfaction", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/lone.ts", type: "file", path: "src/lone.ts" }
+    ],
+    edges: [
+      // The file imports itself — should NOT satisfy "src/lone.ts must import src/lone.ts".
+      { id: "self", type: "imports", from: "file:src/lone.ts", to: "file:src/lone.ts", scope: "internal" }
+    ]
+  };
+  const policy = validatePolicy({
+    rules: [{ id: "self-require", type: "require-import", severity: "error", from: "src/lone.ts", to: "src/lone.ts" }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const violations = report.violations.filter((entry) => entry.ruleId === "self-require");
+  assert.equal(violations.length, 1, "a self-import must not satisfy require-import");
+});
+
+test("evaluatePolicy max-fan-in deduplicates duplicate edges and skips self-imports", () => {
+  const graph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [
+      { id: "file:src/util.ts", type: "file", path: "src/util.ts" },
+      { id: "file:src/a.ts", type: "file", path: "src/a.ts" }
+    ],
+    edges: [
+      // Duplicate import edge — should be counted once.
+      { id: "e1", type: "imports", from: "file:src/a.ts", to: "file:src/util.ts", scope: "internal" },
+      { id: "e2", type: "imports", from: "file:src/a.ts", to: "file:src/util.ts", scope: "internal" },
+      // Self-import — should not contribute to fan-in.
+      { id: "self", type: "imports", from: "file:src/util.ts", to: "file:src/util.ts", scope: "internal" }
+    ]
+  };
+  const policy = validatePolicy({
+    rules: [{ id: "fan-cap", type: "max-fan-in", severity: "error", target: "src/util.ts", limit: 1 }]
+  });
+
+  const report = evaluatePolicy(graph, policy);
+  const fanCheck = report.violations.find((entry) => entry.ruleId === "fan-cap");
+  assert.equal(fanCheck, undefined, "duplicate edges + self-imports should not push fan-in above the limit");
+});
+
+test("detectDrift rejects a graph that fakes the snapshot schema marker without the required fields", () => {
+  const fakeSnapshot = {
+    schema: "repograph.snapshot.v1",
+    nodes: [{ id: "file:a.ts", type: "file", path: "a.ts" }],
+    edges: []
+  };
+  const realGraph = {
+    version: 1,
+    generatedAt: "t",
+    root: "t",
+    nodes: [{ id: "file:a.ts", type: "file", path: "a.ts" }],
+    edges: []
+  };
+
+  // The fake should still be treated as a graph (because it lacks the
+  // marker `fingerprint`/`files` snapshot fields) and accepted —
+  // proving that the schema string alone cannot be used to smuggle a
+  // pre-fabricated snapshot past `ensureSnapshot`.
+  const report = detectDrift(fakeSnapshot, realGraph);
+  assert.equal(report.passed, true);
+  assert.ok(report.base.fingerprint, "the fake input should have been re-snapshotted");
+});

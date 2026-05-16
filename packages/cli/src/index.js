@@ -1467,6 +1467,7 @@ Usage:
   repograph test-select [repo] --changed file,file [--graph path] [--depth n] [--patterns glob,glob] [--json] [--out path]
   repograph baseline [repo] [--graph path] [--out path]
   repograph drift [repo] --baseline path [--graph path] [--max-new-cycles n] [--max-added-files n] [--max-removed-files n] [--max-internal-dep-increase n] [--max-external-dep-increase n] [--max-density-increase n] [--max-new-packages n] [--fail-on-drift] [--json] [--out path]
+    (defaults: --max-new-cycles 0; every other threshold uncapped)
   repograph mcp
 
 Commands:
