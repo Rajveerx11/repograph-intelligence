@@ -48,6 +48,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
 - Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
+- Selects the minimum test set that exercises a diff via `repograph test-select` — reverse-import walk through the graph filtered by configurable test-path patterns; pipes cleanly into a CI step that skips irrelevant tests on every PR
 - Overlays LCOV test coverage onto file nodes via `repograph coverage` — parses Istanbul/c8/pytest-cov/jacoco tracefiles, attaches line/branch/function percentages per file, and (with `--rank`) emits a priority list combining `scoreDependencyRisk` with inverse coverage so high-risk low-coverage files surface first
 - Compares two graph snapshots and reports public-API surface changes via `repograph api-diff` — every exported symbol classified as added, removed, or changed (symbol-kind transition such as `function` → `class`), with optional `--fail-on-breaking` for release gates
 - Exports the dependency graph as GraphViz DOT (`repograph dot`) for Graphviz dot/neato, Gephi, yEd, and any tool that consumes DOT, with color-coded node attributes per file/symbol/package and the same option matrix as the Mermaid exporter
@@ -306,6 +307,14 @@ npm run repograph -- coverage ./repo --lcov coverage/lcov.info --rank --limit 20
 
 The parser handles Istanbul, c8, pytest-cov, and jacoco-style LCOV. Path matching tries exact, then suffix, then basename-only (the last is flagged with `weakMatch: true` so consumers can warn). `--rank` produces a priority list combining `scoreDependencyRisk` with the inverse line coverage; files at or above `--coverage-threshold` (default 80%) are excluded from the ranking so the tail of the list stays focused on real risk.
 
+Select the minimum set of test files that exercise a diff via reverse-import walk through the graph:
+
+```bash
+npm run repograph -- test-select ./repo --changed "src/auth.ts,src/db.ts"
+```
+
+Default test-path patterns cover `test/**`, `tests/**`, `**/__tests__/**`, `**/*.{test,spec}.{js,ts,tsx,jsx,mjs,cjs,py}`, and `**/*_test.{go,py}`. Override with `--patterns "glob,glob"` to match in-house conventions. `--depth n` caps the reverse-walk distance. Output prints a Risk verdict and a sorted list of selected tests; with `--json` the full report is emitted for downstream automation. CI pipelines can pipe this into the test runner to skip irrelevant tests and cut feedback time.
+
 Compare two graph snapshots and report changes to the public API surface — every exported symbol classified as added, removed, or changed:
 
 ```bash
@@ -392,6 +401,7 @@ The server exposes these tools:
 | `repograph_policy` | Evaluate architecture rules (forbid-import, forbid-dependency, no-cycles, max-imports, max-lines) and return a pass/fail report |
 | `repograph_api_diff` | Compare two RepoGraph snapshots and report added, removed, and changed public-API exports |
 | `repograph_coverage` | Overlay LCOV coverage on file nodes and optionally rank files by combined risk and low coverage |
+| `repograph_test_select` | Select the minimum test file set that exercises a list of changed files |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |

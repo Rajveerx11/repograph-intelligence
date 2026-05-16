@@ -20,6 +20,7 @@ import {
   parseLcov,
   rankByCoverageRisk,
   recommendArchitecture,
+  selectTests,
   semanticSearch,
   summarizeRepository,
   toDot,
@@ -196,6 +197,28 @@ const tools = [
         online: { type: "boolean", description: "Query OSV.dev for vulnerability advisories." }
       },
       required: ["repoPath"]
+    }
+  },
+  {
+    name: "repograph_test_select",
+    description: "Select the minimum set of test files that exercise a list of changed files. Walks the graph in reverse (callers → callees) from each changed file and filters dependents to test paths.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze." },
+        changedFiles: {
+          type: "array",
+          items: { type: "string" },
+          description: "Paths of files that changed in the diff (repo-relative)."
+        },
+        testPatterns: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional glob patterns identifying test files. Defaults cover common JS/TS/Python/Go conventions."
+        },
+        maxDepth: { type: "number", description: "Cap on the reverse-walk depth (1-100)." }
+      },
+      required: ["repoPath", "changedFiles"]
     }
   },
   {
@@ -482,6 +505,16 @@ async function callTool(name, args) {
     const baseGraph = requireObject(args.baseGraph, "baseGraph");
     const headGraph = requireObject(args.headGraph, "headGraph");
     return diffApiSurface(baseGraph, headGraph);
+  }
+  if (name === "repograph_test_select") {
+    const graph = await analyzeRepository(requireRepoPath(args));
+    const changedFiles = stringArray(args.changedFiles, "changedFiles");
+    if (!changedFiles.length) {
+      throw new Error("changedFiles must contain at least one path.");
+    }
+    const testPatterns = args.testPatterns === undefined ? undefined : stringArray(args.testPatterns, "testPatterns");
+    const maxDepth = args.maxDepth === undefined ? undefined : boundedLimit(args.maxDepth, 50, 100);
+    return selectTests(graph, changedFiles, { testPatterns, maxDepth });
   }
   if (name === "repograph_coverage") {
     const graph = await analyzeRepository(requireRepoPath(args));
