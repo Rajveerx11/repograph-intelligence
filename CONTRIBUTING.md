@@ -76,7 +76,7 @@ Before opening a pull request:
 
 1. Keep the change focused on one behavior or capability.
 2. Add or update tests in `test/core.test.js` or `test/features.test.js` for graph behavior, CLI behavior, supply-chain output, watch lifecycle, or extractor accuracy.
-3. Run `npm run check`, `npm test`, and `npm run web:build`. Tests must stay green; the existing 24 cases are the floor.
+3. Run `npm run check`, `npm test`, and `npm run web:build`. Tests must stay green; the floor as of `v0.3` is **80 passing test cases**.
 4. When adding a network-touching feature (such as OSV advisories), expose an injectable `fetch` so tests can assert behavior offline.
 5. Update `README.md`, `CONTRIBUTING.md`, or files under `docs/` when user-facing behavior changes.
 6. Describe the repository behavior being modeled and any tradeoffs in the implementation.
@@ -86,6 +86,19 @@ For Rust core changes, also run:
 ```bash
 cargo test --workspace
 ```
+
+### CI exit-code contract
+
+The CLI uses distinct non-zero exit codes so a CI shell pipeline can branch on which gate fired. Keep this contract stable across PRs:
+
+| Exit code | Trigger |
+|-----------|---------|
+| `1` | Generic CLI error (bad command, malformed input, file I/O failure) |
+| `2` | `repograph policy --fail-on <severity>` met or exceeded by at least one violation |
+| `3` | `repograph api-diff --fail-on-breaking` and `summary.breaking > 0` |
+| `4` | `repograph drift --fail-on-drift` and any threshold check failed |
+
+If a new gate-style command needs a distinct code, pick the next free integer rather than overloading an existing one.
 
 ## Code Style
 

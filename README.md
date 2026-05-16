@@ -47,7 +47,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Creates stable graph snapshots for baselines and CI
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
-- Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
+- Enforces architecture rules as code via `repograph policy` — JSON policy files declare nine rule types (`forbid-import`, `require-import`, `forbid-dependency`, `no-cycles`, `max-imports`, `max-fan-in`, `max-lines`, `layered` for hexagonal / clean-architecture enforcement, and `naming-convention` for regex-validated file paths) with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
 - Captures a baseline snapshot via `repograph baseline` and gates PRs on structural drift via `repograph drift` — per-metric thresholds (`--max-new-cycles`, `--max-internal-dep-increase`, `--max-density-increase`, etc.) with `--fail-on-drift` exiting status `4` so CI can block regressions on cycles, dependency growth, and density spikes
 - Selects the minimum test set that exercises a diff via `repograph test-select` — reverse-import walk through the graph filtered by configurable test-path patterns; pipes cleanly into a CI step that skips irrelevant tests on every PR
 - Overlays LCOV test coverage onto file nodes via `repograph coverage` — parses Istanbul/c8/pytest-cov/jacoco tracefiles, attaches line/branch/function percentages per file, and (with `--rank`) emits a priority list combining `scoreDependencyRisk` with inverse coverage so high-risk low-coverage files surface first
@@ -59,6 +59,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Lets users open any project from the explorer header by entering a folder path and clicking **Open Project**, which switches the analyzed root, runs analysis synchronously, and renders the new graph
 - Renders every action result with a human-readable Summary view alongside a JSON view, with a one-click **Copy JSON for LLM** button for pasting structured context into AI assistants
 - Hardens the local web server against CORS bypass and DNS rebinding via Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation, and validates project-root switches with `realpath`-resolved path containment checks plus an optional `REPOGRAPH_ALLOWED_ROOTS` allowlist to defeat symlink and prefix-bypass attacks
+- Ships as a Docker image on the GitHub Container Registry (`ghcr.io/rajveerx11/repograph-intelligence`) with multi-arch (linux/amd64 + linux/arm64) builds and a non-root runtime user; every tag release also publishes a self-contained Node tarball with a SHA-256 sidecar
 - Includes a Rust Phase 1 core workspace for parser, graph, storage, metrics, and CLI foundations
 
 ## Phase Coverage
@@ -70,7 +71,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
 | Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
 | Phase 5: Enterprise and Advanced Intelligence | In progress | History, ownership, security architecture risk, supply-chain audit with OSV advisories, recommendations |
-| Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline comparison, live watch with SSE, CI reports |
+| Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline + drift gate, policy-as-code (9 rule types), API surface diff, test-selection, coverage overlay, live watch with SSE, CI reports, Mermaid + GraphViz exports, Docker image + multi-arch GHCR releases |
 
 ## Quick Start
 
@@ -535,20 +536,27 @@ The verified Node runtime intentionally stays small and inspectable while the Ru
 
 ## Roadmap
 
-Near-term priorities:
+Near-term priorities (v0.4):
 
-- Add richer symbol-level references and call edges
-- Expand MCP tools for symbol-level references and saved graph resources
-- Compile and harden the Rust core in CI once Rust tooling is available in the build environment
-- Improve historical drift scoring and ownership confidence
+- VS Code extension that surfaces blast-radius, risk score, owners, and the MCP tool surface inline
+- GitHub App / PR bot that posts the policy + api-diff + drift verdict automatically on every pull request
+- Tree-sitter-backed JS/TS extraction to replace the regex+masker pipeline and unlock accurate function-level call edges
+- Additional language parsers (Go, Rust, Java, C#) on the same tree-sitter foundation
 - Cache OSV advisory responses on disk so repeated supply-chain audits stay quick offline
-- Move JS/TS extraction onto a real AST (acorn or tree-sitter) once the regex-plus-masker pipeline saturates
+
+Mid-term priorities:
+
+- True function-to-function call graph built on top of the tree-sitter parser
+- Symbol-level rename impact and codemod-ready edit plans
+- YAML loader for `.repograph/policy.yaml` (the engine is YAML-ready; only the loader is pinned to JSON for v1)
+- Conversational repo agent inside the web explorer that uses the MCP server as its tool backend
 
 Longer-term priorities:
 
 - True incremental indexing where the watcher mutates the graph in place instead of rebuilding from scratch
-- Deeper multi-repository service intelligence
+- Deeper multi-repository service intelligence with cross-language edges (TS ↔ Python via OpenAPI / gRPC contracts)
 - Tauri desktop packaging around the web explorer and Rust core
+- Rust core feature parity with the Node runtime as the production engine
 
 ## Design Principles
 

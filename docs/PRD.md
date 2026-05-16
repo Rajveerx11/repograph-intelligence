@@ -315,11 +315,23 @@ Compare two graph snapshots and classify every exported symbol as added, removed
 
 #### 11.9 Architecture Policy as Code
 
-Declarative `.repograph/policy.json` files express structural invariants — forbidden imports, forbidden external dependencies, scoped cycle prohibitions, fan-in/fan-out caps, and file-size limits — that the engine enforces against the analyzed graph. The `repograph policy` CLI command and the `repograph_policy` MCP tool produce a structured pass/fail report; the CLI exits with a non-zero status when violations meet the configured `--fail-on` threshold so CI can gate merges on architectural drift. Glob matching supports `**`, `*`, and `?`; severities (`info`, `warning`, `error`) let teams adopt rules incrementally without instantly breaking history.
+Declarative `.repograph/policy.json` files express structural invariants the engine enforces against the analyzed graph. Nine rule types ship today: `forbid-import` / `require-import` (between glob-matched file sets), `forbid-dependency` (external package bans), `no-cycles` (scoped cycle prohibitions), `max-imports` / `max-fan-in` (outgoing or incoming edge caps), `max-lines` (line-count caps), `layered` (declare ordered layers with name + glob and the engine flags every import that flows "upward" against the declared order — ideal for hexagonal / clean-architecture enforcement), and `naming-convention` (regex pattern applied to basename or full path of files matching a `target` glob). The `repograph policy` CLI command and the `repograph_policy` MCP tool produce a structured pass/fail report; the CLI exits with status `2` when violations meet the configured `--fail-on` threshold so CI can gate merges on architectural drift. Glob matching supports `**`, `*`, and `?`; severities (`info`, `warning`, `error`) let teams adopt rules incrementally without instantly breaking history.
+
+#### 11.12 Test Selection
+
+Given a list of files changed by a diff, `repograph test-select` walks the graph in reverse (callers → callees) from each changed file and filters the resulting dependent set through configurable test-path patterns (defaults cover JS / TS / Python / Go conventions). The output is the minimum test set whose execution covers the diff. The `repograph_test_select` MCP tool exposes the same primitive to AI agents and PR bots. With this in place, CI pipelines can stop re-running the full suite on every PR and only execute the tests structurally affected by the change.
+
+#### 11.13 Baselines and Drift Gate
+
+The `repograph baseline` command captures a `.repograph/baseline.json` snapshot of the current graph and `repograph drift --baseline <path> --fail-on-drift` evaluates the current state against per-metric thresholds (no new cycles, no new internal/external dependencies beyond a cap, density not above a ceiling, etc.). Negative deltas (improvements) never count as drift, even under zero-tolerance caps. The CLI exits with status `4` when any threshold breaks so CI can block structural-regression PRs without requiring full architectural review. The `repograph_drift` MCP tool accepts inline baseline and head graphs for review automation. Combined with the policy engine (status `2`) and api-diff (status `3`), the four distinct exit codes give CI pipelines a clean branching contract.
+
+#### 11.14 Distribution and Release Engineering
+
+RepoGraph ships as a multi-arch Docker image on the GitHub Container Registry (`linux/amd64` + `linux/arm64`) built by a tag-triggered release workflow. Every `v*.*.*` tag publishes the versioned + `latest` image to GHCR and uploads a self-contained Node tarball (`repograph-intelligence-vX.Y.Z.tar.gz` plus a SHA-256 sidecar) as a GitHub Release asset. The image runs as a non-root `repograph` user, uses `--ignore-scripts` during install to block arbitrary postinstall code execution from transitive dependencies, and pins the entrypoint to the CLI binary so there is no shell wrapper to exploit. CI builds the image on every PR with GHA build cache and smoke-tests both `help` and `stats` against the built image to catch regressions before they reach the registry.
 
 ### Deliverables
 
-The system should analyze repositories, generate dependency graphs, expose repository metrics, visualize repository structure interactively, and export the graph as a Mermaid flowchart for embedding in documentation, pull requests, and shared design notes.
+The system should analyze repositories, generate dependency graphs, expose repository metrics, visualize repository structure interactively, export the graph as Mermaid or GraphViz DOT for embedding in documentation and pull requests, enforce architectural invariants via policy-as-code, gate releases on structural drift and public-API stability, select the minimum test set that exercises a diff, and ship as a multi-arch Docker image plus a standalone Node tarball on every tag release.
 
 ### Success Criteria
 
