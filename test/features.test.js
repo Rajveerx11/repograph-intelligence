@@ -18,6 +18,7 @@ import {
   parsePyprojectDependencies,
   parseRequirements,
   rankByCoverageRisk,
+  selectTests,
   toDot,
   toMermaid,
   validatePolicy
@@ -878,4 +879,80 @@ test("toMermaid escapes pipes, backticks, and braces in labels to keep flowchart
   assert.ok(!/`/.test(mermaid.split("\n").filter((line) => line.includes("weird")).join("")), "backticks should not appear inside node labels");
   assert.ok(!mermaid.includes("{d}"), "curly braces should not appear inside node labels");
   assert.match(mermaid, /a\/b/, "pipe should be replaced with forward slash");
+});
+
+function buildSelectionGraph() {
+  return {
+    version: 1,
+    generatedAt: "fixture",
+    root: "fixture",
+    nodes: [
+      { id: "file:src/auth.ts", type: "file", path: "src/auth.ts", label: "auth.ts" },
+      { id: "file:src/db.ts", type: "file", path: "src/db.ts", label: "db.ts" },
+      { id: "file:src/util.ts", type: "file", path: "src/util.ts", label: "util.ts" },
+      { id: "file:test/auth.test.ts", type: "file", path: "test/auth.test.ts", label: "auth.test.ts" },
+      { id: "file:test/db.test.ts", type: "file", path: "test/db.test.ts", label: "db.test.ts" },
+      { id: "file:tests/integration.spec.ts", type: "file", path: "tests/integration.spec.ts", label: "integration.spec.ts" },
+      { id: "file:src/lonely.ts", type: "file", path: "src/lonely.ts", label: "lonely.ts" }
+    ],
+    edges: [
+      { id: "e1", type: "imports", from: "file:src/auth.ts", to: "file:src/db.ts", scope: "internal" },
+      { id: "e2", type: "imports", from: "file:test/auth.test.ts", to: "file:src/auth.ts", scope: "internal" },
+      { id: "e3", type: "imports", from: "file:test/db.test.ts", to: "file:src/db.ts", scope: "internal" },
+      { id: "e4", type: "imports", from: "file:tests/integration.spec.ts", to: "file:src/auth.ts", scope: "internal" },
+      { id: "e5", type: "imports", from: "file:src/util.ts", to: "file:src/db.ts", scope: "internal" }
+    ]
+  };
+}
+
+test("selectTests returns the minimum test set for a diff via reverse-import walk", () => {
+  const graph = buildSelectionGraph();
+  const report = selectTests(graph, ["src/db.ts"]);
+
+  assert.deepEqual(report.tests, ["test/auth.test.ts", "test/db.test.ts", "tests/integration.spec.ts"]);
+  assert.equal(report.summary.tests, 3);
+  assert.equal(report.summary.changed, 1);
+  assert.ok(report.summary.affected >= 3);
+});
+
+test("selectTests treats a changed test file as one of its own selected tests", () => {
+  const graph = buildSelectionGraph();
+  const report = selectTests(graph, ["test/auth.test.ts"]);
+
+  assert.ok(report.tests.includes("test/auth.test.ts"), "the changed test file should appear in the selection");
+});
+
+test("selectTests respects custom testPatterns and skips files that no longer match", () => {
+  const graph = buildSelectionGraph();
+  // Restrict the test pattern to `tests/**` only — the `test/**` directory
+  // should drop out of the selection entirely.
+  const report = selectTests(graph, ["src/db.ts"], { testPatterns: ["tests/**"] });
+
+  assert.deepEqual(report.tests, ["tests/integration.spec.ts"]);
+});
+
+test("selectTests honors maxDepth so only direct callers are included when depth=1", () => {
+  const graph = buildSelectionGraph();
+  const report = selectTests(graph, ["src/db.ts"], { maxDepth: 1 });
+
+  // src/db.ts -> direct importers: src/auth.ts, test/db.test.ts, src/util.ts
+  // test/db.test.ts is a direct test importer of db.ts so it must appear.
+  assert.ok(report.tests.includes("test/db.test.ts"));
+  // test/auth.test.ts only imports auth.ts (depth 2 from db.ts), should be filtered when depth=1.
+  assert.ok(!report.tests.includes("test/auth.test.ts"), "depth=1 should exclude test/auth.test.ts (it imports auth, which imports db)");
+});
+
+test("selectTests returns an empty test array when changed files have no test consumers", () => {
+  const graph = buildSelectionGraph();
+  const report = selectTests(graph, ["src/lonely.ts"]);
+
+  assert.equal(report.tests.length, 0);
+  assert.equal(report.summary.tests, 0);
+  assert.ok(report.summary.coverageRatio !== null, "coverageRatio should be a number when test files exist in the graph");
+});
+
+test("selectTests throws on malformed input", () => {
+  const graph = buildSelectionGraph();
+  assert.throws(() => selectTests(null, ["x"]), /requires a graph/);
+  assert.throws(() => selectTests(graph, "not-an-array"), /changedFiles to be an array/);
 });

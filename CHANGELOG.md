@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Test Selection** — new `selectTests(graph, changedFiles, options)` walks the graph in reverse (callers → callees) from each changed file and filters dependents through configurable test-path patterns to produce the minimum set of tests CI should run for a given diff. Defaults cover JS/TS/Python/Go conventions (`test/**`, `tests/**`, `**/__tests__/**`, `**/*.{test,spec}.{js,ts,tsx,jsx,mjs,cjs,py}`, `**/*_test.{go,py}`); the CLI accepts `--patterns "glob,glob"` to override. Report shape: `{ changedFiles, affectedFiles, tests, summary }` with risk verdict, blast radius, and a selection-ratio percent. Exposed via `repograph test-select [repo] --changed "a.ts,b.ts" [--depth n] [--patterns ...]` and the `repograph_test_select` MCP tool.
+
 ## [0.2.0] - 2026-05-14
 
 ### Added

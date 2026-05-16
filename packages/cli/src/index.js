@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import {
   applyCoverageToGraph,
   diffApiSurface,
+  selectTests,
   loadLcov,
   rankByCoverageRisk,
   analyzeChangedFiles,
@@ -108,6 +109,8 @@ try {
     await apiDiffCommand(args);
   } else if (command === "coverage") {
     await coverageCommand(args);
+  } else if (command === "test-select") {
+    await testSelectCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -212,6 +215,57 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function testSelectCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const changedFiles = options.changed
+    ? options.changed.split(",").map((item) => item.trim()).filter(Boolean)
+    : [];
+  if (!changedFiles.length) {
+    throw new Error("test-select requires --changed <file,file,...>");
+  }
+  const patterns = options.patterns
+    ? options.patterns.split(",").map((item) => item.trim()).filter(Boolean)
+    : undefined;
+  const maxDepth = options.depth != null && options.depth !== "" ? Number(options.depth) : undefined;
+  const report = selectTests(graph, changedFiles, {
+    testPatterns: patterns,
+    maxDepth: Number.isFinite(maxDepth) ? maxDepth : undefined
+  });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    console.log(`Test selection: ${outputPath}`);
+  }
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  const lines = [];
+  lines.push(`Changed: ${report.summary.changed} file(s)`);
+  lines.push(`Affected: ${report.summary.affected} file(s)`);
+  lines.push(`Tests to run: ${report.summary.tests} of ${report.summary.totalTestFiles} total`);
+  if (report.summary.coverageRatio !== null) {
+    lines.push(`Selection ratio: ${report.summary.coverageRatio}%`);
+  }
+  lines.push(`Risk: ${report.summary.risk.level} (${report.summary.risk.reason})`);
+  lines.push("");
+  if (!report.tests.length) {
+    lines.push("No tests selected. Either the change has no test coverage or the test patterns missed every dependent test file.");
+  } else {
+    lines.push("Selected tests:");
+    for (const test of report.tests) {
+      lines.push(`  ${test}`);
+    }
+  }
+  console.log(lines.join("\n"));
 }
 
 async function coverageCommand(args) {
@@ -1032,6 +1086,11 @@ function parseTargetAndOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === "--patterns") {
+      options.patterns = requireValue(args, index, "--patterns");
+      index += 1;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1267,6 +1326,7 @@ Usage:
   repograph policy [repo] --policy path [--graph path] [--fail-on error|warning|info] [--json] [--out path]
   repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
   repograph coverage [repo] --lcov path [--graph path] [--rank] [--limit n] [--coverage-threshold n] [--json] [--out path]
+  repograph test-select [repo] --changed file,file [--graph path] [--depth n] [--patterns glob,glob] [--json] [--out path]
   repograph mcp
 
 Commands:
@@ -1298,6 +1358,7 @@ Commands:
   policy   Evaluate architecture rules against the graph and produce a pass/fail report (exits non-zero on failure)
   api-diff Compare two graph snapshots and report added, removed, and changed public-API exports
   coverage Overlay LCOV test coverage onto the graph and (with --rank) prioritize high-risk low-coverage files
+  test-select Select the minimum test file set that exercises a diff via reverse-import walk
   mcp      Start the RepoGraph MCP stdio server
 `);
 }
