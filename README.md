@@ -89,6 +89,16 @@ cd repograph-intelligence
 npm test
 ```
 
+Or run via Docker, no Node install required:
+
+```bash
+docker run --rm -v "$(pwd):/repo" ghcr.io/rajveerx11/repograph-intelligence:latest analyze /repo
+docker run --rm -v "$(pwd):/repo" ghcr.io/rajveerx11/repograph-intelligence:latest policy /repo --policy /repo/.repograph/policy.json
+docker run --rm -v "$(pwd):/repo" ghcr.io/rajveerx11/repograph-intelligence:latest drift /repo --baseline /repo/.repograph/baseline.json --fail-on-drift
+```
+
+Build the image locally with `docker build -t repograph/intelligence:dev .` from a clone of this repo. The image is built and smoke-tested on every PR via CI; the `Release` workflow publishes versioned tags to the GitHub Container Registry on every `v*.*.*` git tag along with a `repograph-intelligence-vX.Y.Z.tar.gz` standalone tarball (bundled Node runtime + production deps) attached to the GitHub Release.
+
 Build the graph explorer UI:
 
 ```bash

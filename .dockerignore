@@ -1,0 +1,56 @@
+# Build artefacts and local state
+node_modules
+**/node_modules
+.repograph
+.cache
+.tmp
+dist
+build
+coverage
+.next
+.turbo
+
+# VCS + IDE
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+*.swp
+
+# Rust workspace — not needed in the JS-only Docker image
+crates
+target
+Cargo.toml
+Cargo.lock
+rustfmt.toml
+rust-toolchain.toml
+
+# Tests, fixtures, and dev-only paths
+test
+tests
+__tests__
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Personal / agent state
+.claude
+.cursor
+.aider*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Docker artefacts
+Dockerfile
+.dockerignore
+docker-compose*.yml
