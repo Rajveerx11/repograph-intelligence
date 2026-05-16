@@ -34,6 +34,38 @@
       "severity": "error",
       "from": "packages/core/**",
       "to": "@aws-sdk/*"
+    },
+    {
+      "id": "cli-must-import-core",
+      "type": "require-import",
+      "severity": "warning",
+      "from": "packages/cli/src/index.js",
+      "to": "packages/core/src/**"
+    },
+    {
+      "id": "graph-utility-fan-in-cap",
+      "type": "max-fan-in",
+      "severity": "warning",
+      "target": "packages/core/src/graph.js",
+      "limit": 30
+    },
+    {
+      "id": "respect-layering",
+      "type": "layered",
+      "severity": "error",
+      "layers": [
+        { "name": "apps", "glob": "apps/**" },
+        { "name": "cli", "glob": "packages/cli/**" },
+        { "name": "mcp", "glob": "packages/mcp/**" },
+        { "name": "core", "glob": "packages/core/**" }
+      ]
+    },
+    {
+      "id": "components-pascal-case",
+      "type": "naming-convention",
+      "severity": "warning",
+      "target": "apps/web/src/**/*.tsx",
+      "pattern": "^[A-Z][A-Za-z0-9]*\\.tsx$"
     }
   ]
 }
