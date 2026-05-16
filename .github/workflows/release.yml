@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  docker:
+    name: Publish Docker image to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image metadata
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.meta.outputs.repo }}:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ steps.meta.outputs.repo }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  tarball:
+    name: Build standalone Node tarball
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install production dependencies
+        run: npm install --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Build the bundled tarball
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          name="repograph-intelligence-${tag}"
+          mkdir -p "dist-bundle/${name}"
+          # Bundle the runnable surface and the production dependency tree.
+          cp -R packages "dist-bundle/${name}/packages"
+          cp -R node_modules "dist-bundle/${name}/node_modules"
+          cp package.json README.md LICENSE CHANGELOG.md "dist-bundle/${name}/"
+          tar -czf "dist-bundle/${name}.tar.gz" -C dist-bundle "${name}"
+          shasum -a 256 "dist-bundle/${name}.tar.gz" > "dist-bundle/${name}.tar.gz.sha256"
+          echo "tarball_path=dist-bundle/${name}.tar.gz" >> "$GITHUB_ENV"
+          echo "sha_path=dist-bundle/${name}.tar.gz.sha256" >> "$GITHUB_ENV"
+
+      - name: Upload tarball to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "${tarball_path}" \
+            "${sha_path}" \
+            --clobber
