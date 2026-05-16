@@ -48,6 +48,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Compares snapshots to detect structural drift
 - Produces CI-oriented structural intelligence reports
 - Enforces architecture rules as code via `repograph policy` — JSON policy files declare `forbid-import`, `forbid-dependency`, `no-cycles`, `max-imports`, and `max-lines` rules with glob targets and per-rule severity, returning a structured pass/fail report and a non-zero exit code for CI gating
+- Captures a baseline snapshot via `repograph baseline` and gates PRs on structural drift via `repograph drift` — per-metric thresholds (`--max-new-cycles`, `--max-internal-dep-increase`, `--max-density-increase`, etc.) with `--fail-on-drift` exiting status `4` so CI can block regressions on cycles, dependency growth, and density spikes
 - Selects the minimum test set that exercises a diff via `repograph test-select` — reverse-import walk through the graph filtered by configurable test-path patterns; pipes cleanly into a CI step that skips irrelevant tests on every PR
 - Overlays LCOV test coverage onto file nodes via `repograph coverage` — parses Istanbul/c8/pytest-cov/jacoco tracefiles, attaches line/branch/function percentages per file, and (with `--rank`) emits a priority list combining `scoreDependencyRisk` with inverse coverage so high-risk low-coverage files surface first
 - Compares two graph snapshots and reports public-API surface changes via `repograph api-diff` — every exported symbol classified as added, removed, or changed (symbol-kind transition such as `function` → `class`), with optional `--fail-on-breaking` for release gates
@@ -324,6 +325,15 @@ npm run repograph -- test-select ./repo --changed "src/auth.ts,src/db.ts"
 
 Default test-path patterns cover `test/**`, `tests/**`, `**/__tests__/**`, `**/*.{test,spec}.{js,ts,tsx,jsx,mjs,cjs,py}`, and `**/*_test.{go,py}`. Override with `--patterns "glob,glob"` to match in-house conventions. `--depth n` caps the reverse-walk distance. Output prints a Risk verdict and a sorted list of selected tests; with `--json` the full report is emitted for downstream automation. CI pipelines can pipe this into the test runner to skip irrelevant tests and cut feedback time.
 
+Capture a baseline snapshot for drift detection, then run a drift gate on subsequent PRs:
+
+```bash
+npm run repograph -- baseline ./repo
+npm run repograph -- drift ./repo --baseline .repograph/baseline.json --fail-on-drift
+```
+
+`baseline` writes `.repograph/baseline.json` by default (overridable with `--out`). `drift` compares the current graph against that file and applies per-metric thresholds: `--max-new-cycles n` (default `0` — any new cycle fails), `--max-added-files`, `--max-removed-files`, `--max-internal-dep-increase`, `--max-external-dep-increase`, `--max-density-increase`, `--max-new-packages`. With `--fail-on-drift` the CLI exits status `4` when any threshold is breached. Improvements (reductions) never count as drift, even with a zero-tolerance cap. The report includes the full `compareGraphSnapshots` diff so CI bots can render a human summary of what changed structurally.
+
 Compare two graph snapshots and report changes to the public API surface — every exported symbol classified as added, removed, or changed:
 
 ```bash
@@ -411,6 +421,7 @@ The server exposes these tools:
 | `repograph_api_diff` | Compare two RepoGraph snapshots and report added, removed, and changed public-API exports |
 | `repograph_coverage` | Overlay LCOV coverage on file nodes and optionally rank files by combined risk and low coverage |
 | `repograph_test_select` | Select the minimum test file set that exercises a list of changed files |
+| `repograph_drift` | Compare a baseline against the current state and flag drift using per-metric thresholds |
 | `repograph_validate` | Validate graph schema and references |
 | `repograph_snapshot` | Create a stable graph intelligence snapshot |
 | `repograph_compare` | Compare two graph snapshots |

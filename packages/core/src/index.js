@@ -38,6 +38,7 @@ export { toDot } from "./dot.js";
 export { compileGlob, evaluatePolicy, loadPolicy, validatePolicy } from "./policy.js";
 export { diffApiSurface } from "./api-diff.js";
 export { DEFAULT_TEST_PATTERNS, selectTests } from "./test-select.js";
+export { DEFAULT_THRESHOLDS, detectDrift } from "./drift.js";
 export {
   applyCoverageToGraph,
   loadLcov,

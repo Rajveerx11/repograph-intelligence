@@ -12,6 +12,7 @@ import {
   createAgentContext,
   createGuidanceReport,
   createGraphSnapshot,
+  detectDrift,
   inferOwnership,
   applyCoverageToGraph,
   diffApiSurface,
@@ -234,6 +235,32 @@ const tools = [
         coverageThreshold: { type: "number", description: "Files at or above this line-coverage percent (0-100) are excluded from the ranking." }
       },
       required: ["repoPath", "lcov"]
+    }
+  },
+  {
+    name: "repograph_drift",
+    description: "Compare a baseline graph or snapshot against the current state and flag drift (new cycles, new dependencies, density spikes, etc.) using per-metric thresholds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repoPath: { type: "string", description: "Repository path to analyze for the head state. Skipped if `headGraph` is provided." },
+        baselineSnapshot: { type: "object", description: "Previously saved graph snapshot." },
+        baselineGraph: { type: "object", description: "Alternative to baselineSnapshot — pass a raw graph to snapshot inline." },
+        headGraph: { type: "object", description: "Override the head graph (skips analysis)." },
+        thresholds: {
+          type: "object",
+          description: "Per-metric drift caps. Unspecified metrics default to Infinity (uncapped) except `maxNewCycles` which defaults to 0.",
+          properties: {
+            maxNewCycles: { type: "number" },
+            maxAddedFiles: { type: "number" },
+            maxRemovedFiles: { type: "number" },
+            maxInternalDepIncrease: { type: "number" },
+            maxExternalDepIncrease: { type: "number" },
+            maxDensityIncrease: { type: "number" },
+            maxNewExternalPackages: { type: "number" }
+          }
+        }
+      }
     }
   },
   {
@@ -500,6 +527,27 @@ async function callTool(name, args) {
     return analyzeSupplyChain(requireRepoPath(args), {
       online: args.online === true
     });
+  }
+  if (name === "repograph_drift") {
+    if (!args.baselineSnapshot && !args.baselineGraph) {
+      throw new Error("repograph_drift requires either baselineSnapshot or baselineGraph.");
+    }
+    if (args.baselineSnapshot && args.baselineGraph) {
+      throw new Error("repograph_drift accepts only one of baselineSnapshot or baselineGraph.");
+    }
+    const baseInput = args.baselineSnapshot
+      ? requireObject(args.baselineSnapshot, "baselineSnapshot")
+      : requireObject(args.baselineGraph, "baselineGraph");
+
+    let headGraph;
+    if (args.headGraph !== undefined) {
+      headGraph = requireObject(args.headGraph, "headGraph");
+    } else {
+      headGraph = await analyzeRepository(requireRepoPath(args));
+    }
+
+    const thresholds = args.thresholds === undefined ? undefined : requireObject(args.thresholds, "thresholds");
+    return detectDrift(baseInput, headGraph, { thresholds });
   }
   if (name === "repograph_api_diff") {
     const baseGraph = requireObject(args.baseGraph, "baseGraph");
