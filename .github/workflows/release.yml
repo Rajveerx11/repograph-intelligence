@@ -25,6 +25,9 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU (for multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -35,12 +38,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo }}:${{ steps.meta.outputs.tag }}
             ghcr.io/${{ steps.meta.outputs.repo }}:latest
@@ -69,13 +73,40 @@ jobs:
           name="repograph-intelligence-${tag}"
           mkdir -p "dist-bundle/${name}"
           # Bundle the runnable surface and the production dependency tree.
+          # `apps/` is included so the optional web explorer (`npm run web`)
+          # is available alongside the CLI and MCP server.
           cp -R packages "dist-bundle/${name}/packages"
+          cp -R apps "dist-bundle/${name}/apps"
+          cp -R examples "dist-bundle/${name}/examples"
           cp -R node_modules "dist-bundle/${name}/node_modules"
           cp package.json README.md LICENSE CHANGELOG.md "dist-bundle/${name}/"
           tar -czf "dist-bundle/${name}.tar.gz" -C dist-bundle "${name}"
           shasum -a 256 "dist-bundle/${name}.tar.gz" > "dist-bundle/${name}.tar.gz.sha256"
           echo "tarball_path=dist-bundle/${name}.tar.gz" >> "$GITHUB_ENV"
           echo "sha_path=dist-bundle/${name}.tar.gz.sha256" >> "$GITHUB_ENV"
+          echo "bundle_dir=dist-bundle/${name}" >> "$GITHUB_ENV"
+
+      - name: Smoke-test the bundled tarball
+        run: |
+          # Extract into a fresh location and verify the CLI executes
+          # without the original checkout on PATH. Catches missing files
+          # in the bundle before the release artefact is published.
+          mkdir -p smoke-bundle
+          tar -xzf "${tarball_path}" -C smoke-bundle
+          extracted="$(find smoke-bundle -maxdepth 1 -mindepth 1 -type d | head -1)"
+          node "${extracted}/packages/cli/src/index.js" help | head -3
+          node --check "${extracted}/packages/cli/src/index.js"
+          node --check "${extracted}/packages/mcp/src/server.js"
+
+      - name: Ensure the GitHub Release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
 
       - name: Upload tarball to release
         env:

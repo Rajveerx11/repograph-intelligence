@@ -124,7 +124,14 @@ function ensureSnapshot(input, label) {
   if (!input || typeof input !== "object") {
     throw new Error(`detectDrift requires a ${label} graph or snapshot.`);
   }
-  if (input.schema === "repograph.snapshot.v1") {
+  // Snapshots are detected by a combination of marker fields rather
+  // than the `schema` string alone — a malicious graph that sets the
+  // schema field would otherwise bypass the inline-snapshot path. The
+  // marker set is what `createGraphSnapshot` always emits.
+  const looksLikeSnapshot = input.schema === "repograph.snapshot.v1"
+    && typeof input.fingerprint === "string"
+    && Array.isArray(input.files);
+  if (looksLikeSnapshot) {
     return input;
   }
   if (Array.isArray(input.nodes) && Array.isArray(input.edges)) {
