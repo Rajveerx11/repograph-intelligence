@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   applyCoverageToGraph,
+  detectDrift,
   diffApiSurface,
   selectTests,
   loadLcov,
@@ -111,6 +112,10 @@ try {
     await coverageCommand(args);
   } else if (command === "test-select") {
     await testSelectCommand(args);
+  } else if (command === "baseline") {
+    await baselineCommand(args);
+  } else if (command === "drift") {
+    await driftCommand(args);
   } else if (command === "mcp") {
     await import("../../mcp/src/server.js");
   } else {
@@ -215,6 +220,100 @@ async function contextCommand(args) {
   }
 
   console.log(context);
+}
+
+async function baselineCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  const graph = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+  const snapshot = createGraphSnapshot(graph);
+  const outputPath = path.resolve(options.out ?? path.join(path.resolve(target), ".repograph", "baseline.json"));
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  console.log(`Baseline: ${outputPath}`);
+  console.log(`Fingerprint: ${snapshot.fingerprint}`);
+  if (snapshot.metrics) {
+    console.log(`Files: ${snapshot.metrics.files}, internal deps: ${snapshot.metrics.internalDependencies}, cycles: ${snapshot.circularDependencies.length}`);
+  }
+}
+
+async function driftCommand(args) {
+  const { target, options } = parseTargetAndOptions(args);
+  if (!options.baseline) {
+    throw new Error("drift requires --baseline <path>");
+  }
+  const baselineRaw = await readFile(path.resolve(options.baseline), "utf8");
+  const baseline = JSON.parse(baselineRaw);
+  const head = options.graph
+    ? await loadGraph(options.graph)
+    : await analyzeRepository(target);
+
+  const parseIntegerFlag = (value) => {
+    if (value == null || value === "") {
+      return undefined;
+    }
+    const number = Number(value);
+    if (!Number.isFinite(number) || number < 0) {
+      throw new Error(`Threshold must be a non-negative number: ${value}`);
+    }
+    return number;
+  };
+  const thresholds = {};
+  const flagMap = {
+    "max-new-cycles": "maxNewCycles",
+    "max-added-files": "maxAddedFiles",
+    "max-removed-files": "maxRemovedFiles",
+    "max-internal-dep-increase": "maxInternalDepIncrease",
+    "max-external-dep-increase": "maxExternalDepIncrease",
+    "max-density-increase": "maxDensityIncrease",
+    "max-new-packages": "maxNewExternalPackages"
+  };
+  for (const [flag, key] of Object.entries(flagMap)) {
+    const value = parseIntegerFlag(options[flag]);
+    if (value !== undefined) {
+      thresholds[key] = value;
+    }
+  }
+
+  const report = detectDrift(baseline, head, { thresholds });
+
+  if (options.out) {
+    const outputPath = path.resolve(options.out);
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    console.log(`Drift report: ${outputPath}`);
+  }
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatDriftReport(report));
+  }
+
+  if (!report.passed && options["fail-on-drift"] === true) {
+    process.exit(4);
+  }
+}
+
+function formatDriftReport(report) {
+  const lines = [];
+  lines.push(`Base fingerprint:   ${report.base.fingerprint}`);
+  lines.push(`Head fingerprint:   ${report.head.fingerprint}`);
+  lines.push(`Fingerprint changed: ${report.summary.fingerprintChanged}`);
+  lines.push(`Comparison severity: ${report.summary.severity}`);
+  lines.push("");
+  lines.push("Drift checks:");
+  for (const check of report.checks) {
+    const status = check.passed ? "OK" : "FAIL";
+    const limit = check.threshold === Infinity ? "∞" : check.threshold;
+    lines.push(`  [${status}] ${check.name}: delta ${check.delta}, threshold ${limit} (baseline ${check.baseline} -> current ${check.current})`);
+  }
+  lines.push("");
+  lines.push(`Status: ${report.passed ? "PASS" : "FAIL"}`);
+  if (!report.passed) {
+    lines.push(`Failed checks: ${report.summary.failedChecks.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 async function testSelectCommand(args) {
@@ -1091,6 +1190,45 @@ function parseTargetAndOptions(args) {
       index += 1;
       continue;
     }
+    if (arg === "--max-new-cycles") {
+      options["max-new-cycles"] = requireValue(args, index, "--max-new-cycles");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-added-files") {
+      options["max-added-files"] = requireValue(args, index, "--max-added-files");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-removed-files") {
+      options["max-removed-files"] = requireValue(args, index, "--max-removed-files");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-internal-dep-increase") {
+      options["max-internal-dep-increase"] = requireValue(args, index, "--max-internal-dep-increase");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-external-dep-increase") {
+      options["max-external-dep-increase"] = requireValue(args, index, "--max-external-dep-increase");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-density-increase") {
+      options["max-density-increase"] = requireValue(args, index, "--max-density-increase");
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-new-packages") {
+      options["max-new-packages"] = requireValue(args, index, "--max-new-packages");
+      index += 1;
+      continue;
+    }
+    if (arg === "--fail-on-drift") {
+      options["fail-on-drift"] = true;
+      continue;
+    }
     positional.push(arg);
   }
 
@@ -1327,6 +1465,8 @@ Usage:
   repograph api-diff --base graph.json --head graph.json [--json] [--out path] [--fail-on-breaking] [--no-by-file]
   repograph coverage [repo] --lcov path [--graph path] [--rank] [--limit n] [--coverage-threshold n] [--json] [--out path]
   repograph test-select [repo] --changed file,file [--graph path] [--depth n] [--patterns glob,glob] [--json] [--out path]
+  repograph baseline [repo] [--graph path] [--out path]
+  repograph drift [repo] --baseline path [--graph path] [--max-new-cycles n] [--max-added-files n] [--max-removed-files n] [--max-internal-dep-increase n] [--max-external-dep-increase n] [--max-density-increase n] [--max-new-packages n] [--fail-on-drift] [--json] [--out path]
   repograph mcp
 
 Commands:
@@ -1359,6 +1499,8 @@ Commands:
   api-diff Compare two graph snapshots and report added, removed, and changed public-API exports
   coverage Overlay LCOV test coverage onto the graph and (with --rank) prioritize high-risk low-coverage files
   test-select Select the minimum test file set that exercises a diff via reverse-import walk
+  baseline Snapshot the current graph as `.repograph/baseline.json` for future drift checks
+  drift    Compare the current graph against a baseline snapshot and fail on threshold breaches (exit 4)
   mcp      Start the RepoGraph MCP stdio server
 `);
 }

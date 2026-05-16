@@ -17,6 +17,8 @@ import {
   parseLcov,
   parsePyprojectDependencies,
   parseRequirements,
+  createGraphSnapshot,
+  detectDrift,
   rankByCoverageRisk,
   selectTests,
   toDot,
@@ -1080,4 +1082,95 @@ test("selectTests throws on malformed input", () => {
   const graph = buildSelectionGraph();
   assert.throws(() => selectTests(null, ["x"]), /requires a graph/);
   assert.throws(() => selectTests(graph, "not-an-array"), /changedFiles to be an array/);
+});
+
+function buildDriftGraph(spec) {
+  const fileNodes = spec.files.map((path) => ({ id: `file:${path}`, type: "file", path, label: path.split("/").pop() }));
+  const packageNodes = (spec.packages ?? []).map((name) => ({ id: `package:${name}`, type: "package", label: name }));
+  const edges = (spec.edges ?? []).map((edge, index) => ({
+    id: `e${index}`,
+    type: edge.type ?? "imports",
+    from: edge.from,
+    to: edge.to,
+    scope: edge.scope ?? "internal"
+  }));
+  return { version: 1, generatedAt: "fixture", root: "fixture", nodes: [...fileNodes, ...packageNodes], edges };
+}
+
+test("detectDrift accepts both raw graphs and snapshots and reports a passing diff", () => {
+  const base = buildDriftGraph({
+    files: ["src/a.ts", "src/b.ts"],
+    edges: [{ from: "file:src/a.ts", to: "file:src/b.ts" }]
+  });
+  const head = buildDriftGraph({
+    files: ["src/a.ts", "src/b.ts"],
+    edges: [{ from: "file:src/a.ts", to: "file:src/b.ts" }]
+  });
+
+  const report = detectDrift(createGraphSnapshot(base), head);
+  assert.equal(report.passed, true);
+  assert.equal(report.summary.failedChecks.length, 0);
+  assert.equal(report.checks.find((check) => check.name === "newCycles").delta, 0);
+});
+
+test("detectDrift fails when a new cycle appears, even with the default zero-tolerance threshold", () => {
+  const base = buildDriftGraph({
+    files: ["src/a.ts", "src/b.ts"],
+    edges: [{ from: "file:src/a.ts", to: "file:src/b.ts" }]
+  });
+  const head = buildDriftGraph({
+    files: ["src/a.ts", "src/b.ts"],
+    edges: [
+      { from: "file:src/a.ts", to: "file:src/b.ts" },
+      { from: "file:src/b.ts", to: "file:src/a.ts" }
+    ]
+  });
+
+  const report = detectDrift(base, head);
+  assert.equal(report.passed, false);
+  assert.ok(report.summary.failedChecks.includes("newCycles"));
+});
+
+test("detectDrift treats reductions as non-violations even with a zero threshold", () => {
+  const base = buildDriftGraph({
+    files: ["src/a.ts", "src/b.ts", "src/c.ts"],
+    edges: [
+      { from: "file:src/a.ts", to: "file:src/b.ts" },
+      { from: "file:src/b.ts", to: "file:src/c.ts" }
+    ]
+  });
+  const head = buildDriftGraph({
+    files: ["src/a.ts"],
+    edges: []
+  });
+
+  const report = detectDrift(base, head, { thresholds: { maxRemovedFiles: 5, maxInternalDepIncrease: 0 } });
+  assert.equal(report.checks.find((check) => check.name === "internalDepIncrease").passed, true,
+    "reducing internal dependencies should never fail a max-increase check");
+});
+
+test("detectDrift trips the threshold when an external dependency is added beyond the cap", () => {
+  const base = buildDriftGraph({
+    files: ["src/a.ts"],
+    packages: [],
+    edges: []
+  });
+  const head = buildDriftGraph({
+    files: ["src/a.ts"],
+    packages: ["lodash"],
+    edges: [{ from: "file:src/a.ts", to: "package:lodash", type: "dependency", scope: "external" }]
+  });
+
+  const report = detectDrift(base, head, { thresholds: { maxNewExternalPackages: 0 } });
+  const newPackagesCheck = report.checks.find((check) => check.name === "newExternalPackages");
+  assert.equal(newPackagesCheck.delta, 1);
+  assert.equal(newPackagesCheck.passed, false);
+  assert.equal(report.passed, false);
+});
+
+test("detectDrift throws when either input is not a graph or snapshot", () => {
+  const good = buildDriftGraph({ files: ["src/a.ts"], edges: [] });
+  assert.throws(() => detectDrift(null, good), /base/);
+  assert.throws(() => detectDrift(good, "not-a-graph"), /head/);
+  assert.throws(() => detectDrift({ nodes: [] }, good), /not a recognised graph or snapshot/);
 });
