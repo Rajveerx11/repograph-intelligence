@@ -87,6 +87,17 @@ For Rust core changes, also run:
 cargo test --workspace
 ```
 
+For VS Code extension changes (under `apps/vscode/`), also run:
+
+```bash
+cd apps/vscode
+npm install --no-audit --no-fund
+npm run compile
+npm test
+```
+
+The extension is a **standalone npm package** outside the root workspace so its dev-dependency surface (`@types/vscode`, `vsce`) does not bleed into the core install. Edit `apps/vscode/package.json` directly when adding deps; the root `package.json` does not list the extension as a workspace.
+
 ### CI exit-code contract
 
 The CLI uses distinct non-zero exit codes so a CI shell pipeline can branch on which gate fired. Keep this contract stable across PRs:

@@ -43,6 +43,32 @@ jobs:
         run: npm run audit
         continue-on-error: true
 
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: apps/vscode
+        run: npm install --no-audit --no-fund
+
+      - name: Compile TypeScript
+        working-directory: apps/vscode
+        run: npm run compile
+
+      - name: Run extension unit tests
+        working-directory: apps/vscode
+        run: npm test
+
   rust:
     name: Rust (stable)
     runs-on: ubuntu-latest
