@@ -42,3 +42,5 @@ venv/
 *.db
 *.duckdb
 .repograph/
+apps/vscode/out/
+apps/vscode/*.vsix

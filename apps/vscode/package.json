@@ -1,0 +1,153 @@
+{
+  "name": "repograph-intelligence-vscode",
+  "displayName": "RepoGraph Intelligence",
+  "description": "Structural repository intelligence — blast radius, dependency risk, architecture policy, and drift gates surfaced inline in your editor.",
+  "version": "0.4.0",
+  "publisher": "rajveerx11",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.84.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other",
+    "Visualization",
+    "Linters"
+  ],
+  "keywords": [
+    "code-intelligence",
+    "dependency-graph",
+    "architecture",
+    "static-analysis",
+    "mcp",
+    "blast-radius",
+    "policy-as-code"
+  ],
+  "main": "./out/extension.js",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rajveerx11/repograph-intelligence.git",
+    "directory": "apps/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Rajveerx11/repograph-intelligence/issues"
+  },
+  "homepage": "https://github.com/Rajveerx11/repograph-intelligence/blob/main/apps/vscode/README.md",
+  "activationEvents": [
+    "onCommand:repograph.analyze",
+    "onCommand:repograph.showBlastRadius",
+    "onCommand:repograph.runPolicy",
+    "onCommand:repograph.runDrift",
+    "onCommand:repograph.refreshRiskView",
+    "onView:repographRiskView"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "repograph.analyze",
+        "title": "RepoGraph: Analyze Workspace",
+        "category": "RepoGraph"
+      },
+      {
+        "command": "repograph.showBlastRadius",
+        "title": "RepoGraph: Show Blast Radius for Active File",
+        "category": "RepoGraph"
+      },
+      {
+        "command": "repograph.runPolicy",
+        "title": "RepoGraph: Run Architecture Policy",
+        "category": "RepoGraph"
+      },
+      {
+        "command": "repograph.runDrift",
+        "title": "RepoGraph: Check Drift Against Baseline",
+        "category": "RepoGraph"
+      },
+      {
+        "command": "repograph.refreshRiskView",
+        "title": "RepoGraph: Refresh Risk View",
+        "category": "RepoGraph",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "repograph",
+          "title": "RepoGraph",
+          "icon": "$(graph-line)"
+        }
+      ]
+    },
+    "views": {
+      "repograph": [
+        {
+          "id": "repographRiskView",
+          "name": "Risk Ranking",
+          "icon": "$(warning)",
+          "contextualTitle": "RepoGraph Risk"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "repograph.refreshRiskView",
+          "when": "view == repographRiskView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RepoGraph Intelligence",
+      "properties": {
+        "repograph.mcpCommand": {
+          "type": "string",
+          "default": "npx",
+          "description": "Command used to launch the RepoGraph MCP stdio server. Override with an absolute path if you have the CLI installed globally."
+        },
+        "repograph.mcpArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["-y", "repograph-intelligence", "mcp"],
+          "description": "Arguments passed to the MCP launcher command."
+        },
+        "repograph.riskLimit": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum number of files to display in the Risk Ranking view."
+        },
+        "repograph.codelens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a blast-radius CodeLens above top-level function declarations."
+        },
+        "repograph.policyPath": {
+          "type": "string",
+          "default": ".repograph/policy.json",
+          "description": "Workspace-relative path to the policy file used by the Run Architecture Policy command."
+        },
+        "repograph.baselinePath": {
+          "type": "string",
+          "default": ".repograph/baseline.json",
+          "description": "Workspace-relative path to the baseline snapshot used by the Check Drift command."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "node --test out/test/*.test.js",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.84.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -59,6 +59,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 - Lets users open any project from the explorer header by entering a folder path and clicking **Open Project**, which switches the analyzed root, runs analysis synchronously, and renders the new graph
 - Renders every action result with a human-readable Summary view alongside a JSON view, with a one-click **Copy JSON for LLM** button for pasting structured context into AI assistants
 - Hardens the local web server against CORS bypass and DNS rebinding via Host allowlist, `Sec-Fetch-Site` enforcement, and Origin/Referer validation, and validates project-root switches with `realpath`-resolved path containment checks plus an optional `REPOGRAPH_ALLOWED_ROOTS` allowlist to defeat symlink and prefix-bypass attacks
+- Surfaces inline in VS Code via a dedicated extension under [`apps/vscode/`](apps/vscode/) — blast-radius CodeLens above every JS / TS / Python file, a Risk Ranking sidebar, and commands for analyze / policy / drift / blast-radius reports; spawns the canonical MCP server as a child process and speaks JSON-RPC over stdio (no embedded analyzer, no telemetry, no cloud)
 - Ships as a Docker image on the GitHub Container Registry (`ghcr.io/rajveerx11/repograph-intelligence`) with multi-arch (linux/amd64 + linux/arm64) builds and a non-root runtime user; every tag release also publishes a self-contained Node tarball with a SHA-256 sidecar
 - Includes a Rust Phase 1 core workspace for parser, graph, storage, metrics, and CLI foundations
 
