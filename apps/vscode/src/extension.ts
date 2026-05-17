@@ -18,6 +18,35 @@ export function activate(context: vscode.ExtensionContext): void {
   const config = () => vscode.workspace.getConfiguration("repograph");
   const workspaceRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
+  // Refuse to spawn the MCP subprocess in an untrusted workspace.
+  // A hostile `.vscode/settings.json` could otherwise set
+  // `repograph.mcpCommand` to an arbitrary binary and execute it the
+  // moment the workspace opens. Untrusted workspaces still see the
+  // extension's commands in the palette but each command no-ops with a
+  // friendly message rather than a crash.
+  if (!vscode.workspace.isTrusted) {
+    output.appendLine(
+      "RepoGraph is disabled in this untrusted workspace. Mark the folder as trusted to enable analysis."
+    );
+    context.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        vscode.commands.executeCommand("workbench.action.reloadWindow");
+      })
+    );
+    const guard = () =>
+      vscode.window.showWarningMessage(
+        "RepoGraph: this workspace is not trusted. Mark the folder as trusted (File → Restricted Mode) to run analysis."
+      );
+    context.subscriptions.push(
+      vscode.commands.registerCommand("repograph.analyze", guard),
+      vscode.commands.registerCommand("repograph.showBlastRadius", guard),
+      vscode.commands.registerCommand("repograph.runPolicy", guard),
+      vscode.commands.registerCommand("repograph.runDrift", guard),
+      vscode.commands.registerCommand("repograph.refreshRiskView", guard)
+    );
+    return;
+  }
+
   client = new McpClient({
     command: config().get<string>("mcpCommand", "npx"),
     args: config().get<string[]>("mcpArgs", ["-y", "repograph-intelligence", "mcp"]),
@@ -167,7 +196,13 @@ async function runPolicy(workspaceRoot: () => string | undefined, policyRelPath:
     vscode.window.showErrorMessage("RepoGraph: no workspace folder open.");
     return;
   }
-  const absolutePolicy = path.resolve(root, policyRelPath);
+  const absolutePolicy = resolveInsideWorkspace(root, policyRelPath);
+  if (!absolutePolicy) {
+    vscode.window.showErrorMessage(
+      `RepoGraph: policy path '${policyRelPath}' escapes the workspace. Use a path relative to the workspace root.`
+    );
+    return;
+  }
   try {
     await fs.access(absolutePolicy);
   } catch {
@@ -209,7 +244,13 @@ async function runDrift(workspaceRoot: () => string | undefined, baselineRelPath
     vscode.window.showErrorMessage("RepoGraph: no workspace folder open.");
     return;
   }
-  const absoluteBaseline = path.resolve(root, baselineRelPath);
+  const absoluteBaseline = resolveInsideWorkspace(root, baselineRelPath);
+  if (!absoluteBaseline) {
+    vscode.window.showErrorMessage(
+      `RepoGraph: baseline path '${baselineRelPath}' escapes the workspace. Use a path relative to the workspace root.`
+    );
+    return;
+  }
   try {
     await fs.access(absoluteBaseline);
   } catch {
@@ -257,4 +298,29 @@ async function showInDocument(content: string): Promise<void> {
 
 function prettyError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Join a config-supplied workspace-relative path against the workspace
+ * root and reject anything that escapes via `..` or absolute paths.
+ *
+ * `path.resolve(root, "/etc/passwd")` returns `/etc/passwd` unchanged,
+ * so a naive join would let a hostile workspace setting read arbitrary
+ * files on disk. This helper rejects absolute inputs outright and
+ * verifies via `path.relative` that the resolved path is contained
+ * inside `root`.
+ */
+function resolveInsideWorkspace(root: string, relativePath: string): string | null {
+  if (!relativePath || typeof relativePath !== "string") {
+    return null;
+  }
+  if (path.isAbsolute(relativePath)) {
+    return null;
+  }
+  const resolved = path.resolve(root, relativePath);
+  const rel = path.relative(root, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    return null;
+  }
+  return resolved;
 }
