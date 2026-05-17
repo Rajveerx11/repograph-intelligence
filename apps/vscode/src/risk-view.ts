@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "node:path";
 import { McpClient } from "./mcp-client.js";
 
 interface RiskRow {
@@ -133,11 +134,25 @@ function buildRow(row: RiskRow, workspaceRoot: string): RiskItem {
   item.iconPath = new vscode.ThemeIcon(
     row.level === "high" ? "error" : row.level === "medium" ? "warning" : "info"
   );
-  item.command = {
-    command: "vscode.open",
-    title: "Open file",
-    arguments: [vscode.Uri.file(joinPath(workspaceRoot, row.path))]
-  };
+  // Defence-in-depth: only wire up `vscode.open` when the MCP-returned
+  // path is a workspace-relative path that resolves inside the
+  // workspace root. The canonical RepoGraph MCP server only ever emits
+  // relative paths, but a tampered server (or a future tool) could
+  // return absolute or `..`-prefixed paths; we refuse to make those
+  // clickable so a click cannot read `/etc/passwd` or similar.
+  const target = safeJoinUnderWorkspace(workspaceRoot, row.path);
+  if (target) {
+    item.command = {
+      command: "vscode.open",
+      title: "Open file",
+      arguments: [vscode.Uri.file(target)]
+    };
+  } else {
+    const baseTooltip = item.tooltip instanceof vscode.MarkdownString ? item.tooltip.value : "";
+    item.tooltip = new vscode.MarkdownString(
+      `${baseTooltip}\n\n_⚠ Path '${row.path}' is outside the workspace root and was not made clickable._`
+    );
+  }
 
   if (row.reasons?.length) {
     item.children = row.reasons.map((reason) => {
@@ -149,10 +164,25 @@ function buildRow(row: RiskRow, workspaceRoot: string): RiskItem {
   return item;
 }
 
-function joinPath(base: string, relative: string): string {
-  if (/^[a-zA-Z]:[\\/]/.test(relative) || relative.startsWith("/")) {
-    return relative;
+/**
+ * Join an MCP-supplied relative path against the workspace root and
+ * verify the result stays inside that root. Returns `null` when the
+ * input is absolute (Windows drive letters, POSIX `/...`, or UNC
+ * `\\server\...`) or escapes via `..`. Callers should treat `null` as
+ * "do not turn this row into a clickable link".
+ */
+function safeJoinUnderWorkspace(base: string, candidate: string): string | null {
+  if (!candidate || typeof candidate !== "string") {
+    return null;
   }
-  const sep = base.includes("\\") ? "\\" : "/";
-  return `${base}${base.endsWith(sep) ? "" : sep}${relative.replace(/\\/g, sep).replace(/\//g, sep)}`;
+  // Reject absolute paths in any common form.
+  if (path.isAbsolute(candidate) || /^[a-zA-Z]:[\\/]/.test(candidate) || candidate.startsWith("\\\\")) {
+    return null;
+  }
+  const resolved = path.resolve(base, candidate);
+  const rel = path.relative(base, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    return null;
+  }
+  return resolved;
 }
