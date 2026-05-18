@@ -133,3 +133,35 @@ test("escapeMd escapes pipes, backticks, and newlines so they survive a Markdown
   assert.equal(escapeMd("a\nb"), "a b");
   assert.equal(escapeMd(null), "");
 });
+
+test("escapeInline neutralises backticks, pipes, angle brackets, and newlines inside code spans", async () => {
+  const { escapeInline } = await import("../src/formatters.js");
+  assert.equal(escapeInline("a`b"), "a'b");
+  assert.equal(escapeInline("col1|col2"), String.raw`col1\|col2`);
+  assert.equal(escapeInline("a<b>c"), "abc");
+  assert.equal(escapeInline("a\nb"), "a b");
+  assert.equal(escapeInline(null), "");
+});
+
+test("apiDiffSection escapes adversarial path / name fragments inside backtick spans", async () => {
+  const { apiDiffSection } = await import("../src/formatters.js");
+  const section = apiDiffSection({
+    summary: { baseExports: 1, headExports: 0, added: 0, removed: 1, changed: 0, breaking: 1 },
+    removed: [{ path: "src/`evil`.ts", name: "evil|name", type: "function" }],
+    changed: []
+  });
+  assert.ok(!/`evil`/.test(section.body), "raw backticks must not survive into the comment");
+  assert.match(section.body, /'evil'/);
+  assert.match(section.body, /evil\\|name/);
+});
+
+test("driftSection escapes check names so a hostile name cannot break the table layout", async () => {
+  const { driftSection } = await import("../src/formatters.js");
+  const section = driftSection({
+    passed: false,
+    summary: { fingerprintChanged: true, severity: "high", failedChecks: ["bad|name"] },
+    checks: [{ name: "bad|name", baseline: 0, current: 1, delta: 1, threshold: 0, passed: false }]
+  });
+  assert.match(section.body, /bad\\|name/);
+  assert.match(section.body, /\*\*Failed checks\*\*: bad\\|name/);
+});

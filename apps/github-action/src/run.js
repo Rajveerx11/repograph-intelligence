@@ -27,7 +27,7 @@ async function main() {
   const eventName = env.GITHUB_EVENT_NAME ?? "";
   const eventPath = env.GITHUB_EVENT_PATH;
   if (eventName !== "pull_request" && eventName !== "pull_request_target") {
-    console.log("::notice::RepoGraph action skipped — only runs on pull_request events.");
+    console.log("::notice::RepoGraph action skipped — only runs on `pull_request` or `pull_request_target` events.");
     return;
   }
   if (!eventPath || !existsSync(eventPath)) {
@@ -236,15 +236,47 @@ function parseJsonOrNull(text) {
   try {
     return JSON.parse(trimmed);
   } catch {
-    // Try to recover the last JSON block — `--json` output is always
-    // a single JSON document, but log noise can prefix it.
-    const lastOpen = trimmed.indexOf("{");
-    const lastClose = trimmed.lastIndexOf("}");
-    if (lastOpen !== -1 && lastClose > lastOpen) {
-      try {
-        return JSON.parse(trimmed.slice(lastOpen, lastClose + 1));
-      } catch {
-        return null;
+    // Try to recover the JSON block — `--json` output is always a
+    // single JSON document, but log noise can prefix it. Use a
+    // brace-balanced, string-aware scan starting from the first `{`
+    // rather than `lastIndexOf("}")`, which would otherwise be
+    // fooled by a stray `}` inside a violation message string.
+    const startIndex = trimmed.indexOf("{");
+    if (startIndex === -1) {
+      return null;
+    }
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    for (let index = startIndex; index < trimmed.length; index += 1) {
+      const char = trimmed[index];
+      if (inString) {
+        if (escapeNext) {
+          escapeNext = false;
+        } else if (char === "\\") {
+          escapeNext = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+      if (char === "{") {
+        depth += 1;
+        continue;
+      }
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(trimmed.slice(startIndex, index + 1));
+          } catch {
+            return null;
+          }
+        }
       }
     }
     return null;

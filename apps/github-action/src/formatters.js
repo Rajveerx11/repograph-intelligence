@@ -46,7 +46,7 @@ export function policySection(report) {
     lines.push("| --- | --- | --- | --- |");
     for (const violation of (report.violations ?? []).slice(0, MAX_ROWS)) {
       const target = violation.target ?? violation.from ?? "—";
-      lines.push(`| ${violation.severity} | \`${violation.ruleId}\` | \`${target}\` | ${escapeMd(violation.message)} |`);
+      lines.push(`| ${escapeMd(violation.severity)} | \`${escapeInline(violation.ruleId)}\` | \`${escapeInline(target)}\` | ${escapeMd(violation.message)} |`);
     }
     if ((report.violations ?? []).length > MAX_ROWS) {
       lines.push(`| … | … | … | ${(report.violations ?? []).length - MAX_ROWS} more rows truncated |`);
@@ -70,11 +70,11 @@ export function apiDiffSection(report) {
   const rows = [
     ...(report.removed ?? []).slice(0, MAX_ROWS).map((entry) => ({
       verb: "-",
-      label: `\`${entry.path}\` — \`${entry.name}\` (${entry.type ?? "?"}) — _removed_`
+      label: `\`${escapeInline(entry.path)}\` — \`${escapeInline(entry.name)}\` (${escapeInline(entry.type ?? "?")}) — _removed_`
     })),
     ...(report.changed ?? []).slice(0, MAX_ROWS).map((entry) => ({
       verb: "~",
-      label: `\`${entry.path}\` — \`${entry.name}\` — kind \`${entry.baseType ?? "?"}\` → \`${entry.headType ?? "?"}\``
+      label: `\`${escapeInline(entry.path)}\` — \`${escapeInline(entry.name)}\` — kind \`${escapeInline(entry.baseType ?? "?")}\` → \`${escapeInline(entry.headType ?? "?")}\``
     }))
   ];
   if (rows.length > 0) {
@@ -103,11 +103,11 @@ export function driftSection(report) {
   ];
   for (const check of report.checks ?? []) {
     const threshold = check.threshold === null || check.threshold === undefined || !Number.isFinite(check.threshold) ? "∞" : check.threshold;
-    lines.push(`| ${check.name} | ${check.baseline} | ${check.current} | ${check.delta} | ${threshold} | ${check.passed ? "PASS" : "FAIL"} |`);
+    lines.push(`| ${escapeMd(check.name)} | ${check.baseline} | ${check.current} | ${check.delta} | ${threshold} | ${check.passed ? "PASS" : "FAIL"} |`);
   }
   if (!report.passed && report.summary?.failedChecks?.length) {
     lines.push("");
-    lines.push(`**Failed checks**: ${report.summary.failedChecks.join(", ")}`);
+    lines.push(`**Failed checks**: ${report.summary.failedChecks.map(escapeMd).join(", ")}`);
   }
   return { title: "Drift Gate", body: lines.join("\n"), passed: report.passed === true };
 }
@@ -126,7 +126,7 @@ export function testSelectionSection(report) {
     lines.push("");
     lines.push("<details><summary>Selected tests</summary>\n");
     for (const test of (report.tests ?? []).slice(0, MAX_ROWS)) {
-      lines.push(`- \`${test}\``);
+      lines.push(`- \`${escapeInline(test)}\``);
     }
     if ((report.tests ?? []).length > MAX_ROWS) {
       lines.push(`- … ${(report.tests ?? []).length - MAX_ROWS} more truncated`);
@@ -147,12 +147,30 @@ export function escapeMd(value) {
   return String(value).replace(/\|/g, "\\|").replace(/`/g, "\\`").replace(/\r?\n/g, " ");
 }
 
+/**
+ * Escape a value for use inside an inline code span (\`${value}\`).
+ * Backticks would prematurely close the span; pipes would still break
+ * a surrounding Markdown table even though they're inside the span.
+ * Strip both, plus angle brackets so a hostile file name cannot inject
+ * raw HTML through GitHub's renderer.
+ */
+export function escapeInline(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/`/g, "'")
+    .replace(/\|/g, "\\|")
+    .replace(/[<>]/g, "")
+    .replace(/\r?\n/g, " ");
+}
+
 function describeOverall(overall) {
   const failed = overall.failedGates;
   if (failed.length === 0) {
     return "No gates fired. The change is structurally clean.";
   }
-  return `Failed gates: ${failed.map((name) => `\`${name}\``).join(", ")}.`;
+  return `Failed gates: ${failed.map((name) => `\`${escapeInline(name)}\``).join(", ")}.`;
 }
 
 export { STICKY_MARKER, MAX_ROWS };
