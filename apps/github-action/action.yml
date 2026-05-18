@@ -1,0 +1,88 @@
+name: "RepoGraph Intelligence"
+description: "Run RepoGraph's architecture policy, API surface diff, drift gate, and test-selection on a pull request and post the verdict as a sticky PR comment."
+author: "Rajveerx11"
+branding:
+  icon: "git-pull-request"
+  color: "blue"
+
+inputs:
+  policy-path:
+    description: "Workspace-relative path to the policy file. Set to an empty string to skip the policy check."
+    default: ".repograph/policy.json"
+    required: false
+  baseline-path:
+    description: "Workspace-relative path to the baseline snapshot. Set to an empty string to skip the drift check."
+    default: ".repograph/baseline.json"
+    required: false
+  base-graph-path:
+    description: "Workspace-relative path to a saved 'base' graph used by api-diff. Set to an empty string to skip the api-diff check."
+    default: ""
+    required: false
+  changed-files:
+    description: "Comma-separated list of changed files relative to the workspace root. If empty, the action derives the list from `git diff` against the PR's base ref."
+    default: ""
+    required: false
+  fail-on-policy:
+    description: "If 'true', the job fails when the policy gate fails. The verdict comment is posted regardless."
+    default: "true"
+    required: false
+  fail-on-breaking:
+    description: "If 'true', the job fails when the API-diff gate finds at least one breaking change."
+    default: "true"
+    required: false
+  fail-on-drift:
+    description: "If 'true', the job fails when the drift gate detects regressions."
+    default: "true"
+    required: false
+  comment-mode:
+    description: "Either 'update' (overwrite the existing sticky comment, default) or 'append' (post a new comment every time)."
+    default: "update"
+    required: false
+  node-version:
+    description: "Node.js version used to run the bundled MCP server and CLI."
+    default: "22"
+    required: false
+  cli-package:
+    description: "npm package spec installed to provide the `repograph` CLI. Override for testing forks or pre-release builds."
+    default: "repograph-intelligence@latest"
+    required: false
+  github-token:
+    description: "Token used to post the PR comment. Defaults to the workflow's GITHUB_TOKEN."
+    default: ${{ github.token }}
+    required: false
+
+outputs:
+  verdict:
+    description: "Either 'pass' or 'fail' — aggregate verdict across every enabled gate."
+    value: ${{ steps.run.outputs.verdict }}
+  comment-url:
+    description: "URL of the posted (or updated) PR verdict comment."
+    value: ${{ steps.run.outputs.comment-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install RepoGraph CLI
+      shell: bash
+      run: npm install --global --no-audit --no-fund "${{ inputs.cli-package }}"
+
+    - name: Run RepoGraph PR gates
+      id: run
+      shell: bash
+      env:
+        REPOGRAPH_POLICY_PATH: ${{ inputs.policy-path }}
+        REPOGRAPH_BASELINE_PATH: ${{ inputs.baseline-path }}
+        REPOGRAPH_BASE_GRAPH_PATH: ${{ inputs.base-graph-path }}
+        REPOGRAPH_CHANGED_FILES: ${{ inputs.changed-files }}
+        REPOGRAPH_FAIL_ON_POLICY: ${{ inputs.fail-on-policy }}
+        REPOGRAPH_FAIL_ON_BREAKING: ${{ inputs.fail-on-breaking }}
+        REPOGRAPH_FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
+        REPOGRAPH_COMMENT_MODE: ${{ inputs.comment-mode }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "$GITHUB_ACTION_PATH/src/run.js"

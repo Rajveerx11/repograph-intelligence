@@ -1,0 +1,13 @@
+{
+  "name": "repograph-intelligence-github-action",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Composite GitHub Action that runs RepoGraph's PR gates (policy, api-diff, drift, test-selection) and posts a sticky verdict comment.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "node --check src/run.js && node --check src/formatters.js && node --check src/github-client.js"
+  }
+}

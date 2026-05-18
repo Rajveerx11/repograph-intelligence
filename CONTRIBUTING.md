@@ -98,6 +98,16 @@ npm test
 
 The extension is a **standalone npm package** outside the root workspace so its dev-dependency surface (`@types/vscode`, `vsce`) does not bleed into the core install. Edit `apps/vscode/package.json` directly when adding deps; the root `package.json` does not list the extension as a workspace.
 
+For GitHub Action changes (under `apps/github-action/`), run:
+
+```bash
+cd apps/github-action
+npm run lint
+npm test
+```
+
+The action is **also a standalone package** with zero runtime dependencies — Node 22's built-in `fetch` handles every GitHub REST call. Pure formatter modules and the REST client are unit-tested with `globalThis.fetch` mocks; there is no live network in the test suite. When changing the formatters, keep `STICKY_MARKER` stable so existing PRs continue to find and update their verdict comments. When changing the REST client, preserve both the `redirect: "manual"` posture and the `api.github.com`-only `Link` header parsing — together they prevent the workflow token from leaking to a hostile host.
+
 ### CI exit-code contract
 
 The CLI uses distinct non-zero exit codes so a CI shell pipeline can branch on which gate fired. Keep this contract stable across PRs:

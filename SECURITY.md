@@ -39,6 +39,8 @@ The following components are in scope for security reports:
 - **Architecture policy engine** (`packages/core/src/policy.js`) — policy-file size bound, glob-pattern injection (the matcher escapes every regex metacharacter except `*` and `?`), regex pattern length cap on `naming-convention`, and self-import / duplicate-edge dedup defences in `require-import` and `max-fan-in`
 - **Drift gate** (`packages/core/src/drift.js`) — snapshot-spoofing defences in `ensureSnapshot` (a graph that fakes only the `schema` string is re-snapshotted rather than accepted as a baseline)
 - **Docker image** (`Dockerfile`) — supply-chain protection via `--ignore-scripts` at install time, non-root `repograph` runtime user, no shell on the entrypoint path, and multi-arch images published by the tag-triggered `release.yml` workflow with `GITHUB_TOKEN` only (no broad PATs)
+- **VS Code extension** (`apps/vscode`) — workspace-trust gate before spawning the MCP subprocess, path-containment validation for config-supplied paths, MCP-result path validation in the risk view, bounded MCP-client buffers and per-request timeouts
+- **GitHub Action / PR bot** (`apps/github-action`) — token leakage via REST redirects or hostile `Link` headers (client refuses both), comment Markdown-injection via unsanitised report fields, workspace path traversal via action inputs
 
 ## Security Design
 

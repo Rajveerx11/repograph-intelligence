@@ -1,0 +1,33 @@
+name: RepoGraph PR gates
+
+on:
+  pull_request:
+    branches: [main]
+
+# RepoGraph posts a sticky comment on the PR; the action needs
+# pull-requests:write to do that. Everything else stays read-only.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  repograph:
+    name: Run RepoGraph gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with PR history for diff detection)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run RepoGraph gates
+        uses: Rajveerx11/repograph-intelligence/apps/github-action@v0.4.0
+        with:
+          policy-path: .repograph/policy.json
+          baseline-path: .repograph/baseline.json
+          base-graph-path: .repograph/base-graph.json
+          # Defaults: all three fail-on-* flags are true.
+          # Set to "false" to make the gate informational.
+          fail-on-policy: "true"
+          fail-on-breaking: "true"
+          fail-on-drift: "true"
