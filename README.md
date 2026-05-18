@@ -71,7 +71,7 @@ The Node implementation remains the stable runtime surface while the Rust core m
 | Phase 1: Repository Structural Engine | In progress | Parser, graph generation, metrics, JSON/SQLite persistence, CLI, React Flow explorer, Rust core scaffold |
 | Phase 2: Semantic Intelligence Layer | In progress | Local semantic search, architecture summaries, context compression |
 | Phase 3: Change Impact Intelligence | In progress | Blast radius, dependency risk, refactor simulation, Git diff analysis |
-| Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries |
+| Phase 4: AI Agent and IDE Ecosystem | In progress | MCP stdio server, agent context API, guidance warnings, multi-repo summaries, dedicated VS Code extension with CodeLens / Risk sidebar / palette commands, GitHub Action PR bot that posts sticky verdict comments |
 | Phase 5: Enterprise and Advanced Intelligence | In progress | History, ownership, security architecture risk, supply-chain audit with OSV advisories, recommendations |
 | Phase 6: Operationalization and CI Readiness | In progress | Graph validation, snapshots, baseline + drift gate, policy-as-code (9 rule types), API surface diff, test-selection, coverage overlay, live watch with SSE, CI reports, Mermaid + GraphViz exports, Docker image + multi-arch GHCR releases |
 
@@ -538,20 +538,21 @@ The verified Node runtime intentionally stays small and inspectable while the Ru
 
 ## Roadmap
 
-Near-term priorities (v0.4):
+Near-term priorities (v0.5):
 
-- VS Code extension that surfaces blast-radius, risk score, owners, and the MCP tool surface inline
-- GitHub App / PR bot that posts the policy + api-diff + drift verdict automatically on every pull request
 - Tree-sitter-backed JS/TS extraction to replace the regex+masker pipeline and unlock accurate function-level call edges
 - Additional language parsers (Go, Rust, Java, C#) on the same tree-sitter foundation
+- YAML loader for `.repograph/policy.yaml` (the engine is YAML-ready; only the loader is pinned to JSON for v1)
 - Cache OSV advisory responses on disk so repeated supply-chain audits stay quick offline
+- Symbol-level rename impact and codemod-ready edit plans
+- Hover provider in the VS Code extension surfacing callers / callees / coverage inline
 
 Mid-term priorities:
 
 - True function-to-function call graph built on top of the tree-sitter parser
-- Symbol-level rename impact and codemod-ready edit plans
-- YAML loader for `.repograph/policy.yaml` (the engine is YAML-ready; only the loader is pinned to JSON for v1)
 - Conversational repo agent inside the web explorer that uses the MCP server as its tool backend
+- Marketplace publishing for the VS Code extension (OpenVSX + the official Marketplace)
+- Full GitHub App version of the PR bot (one-click install, hosted webhook handler) alongside the current Action wrapper
 
 Longer-term priorities:
 
